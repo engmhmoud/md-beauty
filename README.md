@@ -38,6 +38,20 @@ Open http://127.0.0.1:8000. Saving a file reloads the page.
 
 With Docker, put the command after the image name: `docker run --rm -p 8000:8000 -v "$PWD":/docs md-beauty build . -o site`.
 
+## Reading controls
+
+The article is the main part of the page. On large screens the text grows on its own, and you can give the article almost the whole screen:
+
+| Button | Key | What it does |
+|---|---|---|
+| Left-panel icon | `[` | Show/hide the left sidebar |
+| Right-panel icon | `]` | Show/hide the table of contents |
+| | `\` | Focus mode: hide or show both |
+| **A−** / **A+** | `-` / `=` | Smaller / bigger text (80–300%), only in the article |
+| | `0` | Reset the text size |
+
+Your choices are saved in the browser and stay the same on every page.
+
 ## What you get from plain markdown
 
 | You write | You see |

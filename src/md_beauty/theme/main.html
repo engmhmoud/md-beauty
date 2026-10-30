@@ -1,5 +1,21 @@
 {% extends "base.html" %}
 
+{% block extrahead %}
+  {{ super() }}
+  <script>
+    // apply saved reading layout before first paint (see assets/md-beauty.js)
+    (function () {
+      try {
+        var d = document.documentElement, s = localStorage;
+        if (s.getItem("mb-hide-nav") === "1") d.classList.add("mb-hide-nav");
+        if (s.getItem("mb-hide-toc") === "1") d.classList.add("mb-hide-toc");
+        var t = parseFloat(s.getItem("mb-text-scale"));
+        if (t) d.style.setProperty("--mb-text-scale", t);
+      } catch (e) {}
+    })();
+  </script>
+{% endblock %}
+
 {% block content %}
   {% if page.parent and page.parent.title %}
     <div class="mb-eyebrow">{{ page.parent.title }}</div>

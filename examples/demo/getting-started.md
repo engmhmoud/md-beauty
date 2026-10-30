@@ -28,4 +28,8 @@ Open http://127.0.0.1:8000. Saving a file reloads the page.
 | `md-beauty serve intro.md setup.md` | Only these files |
 | `md-beauty build notes/ -o site` | Static HTML, ready for GitHub Pages or any web server |
 
+## Reading controls
+
+Use the buttons at the top right, or the keys: `[` hides the left sidebar, `]` hides the table of contents, `\` hides both (focus mode), `-` and `=` change the text size, and `0` resets it.
+
 > **Tip:** put a `.md-beauty.yml` next to your notes to set the site title, the sidebar order and section names. See the [README](https://github.com/engmhmoud/md-beauty#optional-settings).
