@@ -4,6 +4,8 @@
 
 Point it at one `.md` file, a few files, or a whole folder. You get a site with a sidebar, search, dark mode, colored callouts and a "mark as read" toggle. Your files stay plain GitHub markdown: no front matter and no special syntax.
 
+**[See the live demo →](https://engmhmoud.github.io/md-beauty/)**
+
 ![md-beauty light mode](docs/screenshot-light.png)
 
 ## Quick start
