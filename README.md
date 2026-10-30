@@ -14,8 +14,10 @@ Point it at one `.md` file, a few files, or a whole folder. You get a site with 
 
 ```bash
 docker build -t md-beauty https://github.com/engmhmoud/md-beauty.git
-docker run --rm -p 8000:8000 -v "$PWD":/docs md-beauty serve .
+docker run --rm --user "$(id -u):$(id -g)" -p 127.0.0.1:8000:8000 -v "$PWD":/docs md-beauty serve .
 ```
+
+`--user` makes pages you add from the browser belong to you, not root.
 
 **With Python 3.10+:**
 
@@ -30,7 +32,8 @@ Open http://127.0.0.1:8000. Saving a file reloads the page. If port 8000 is busy
 
 | Command | What it does |
 |---|---|
-| `md-beauty serve notes/` | Live preview of a folder (all `.md` files inside it) |
+| `md-beauty serve` | Empty workspace (`./md-beauty-notes`): add or paste your first pages in the browser |
+| `md-beauty serve notes/` | Live preview of a folder (all `.md` files inside it); you can add pages too |
 | `md-beauty serve intro.md setup.md` | Only these files (and related ones you list) |
 | `md-beauty build notes/ -o site` | Static HTML in `site/`, ready for GitHub Pages, Netlify or any web server |
 | `--title "My Notes"` | Site name (default: the H1 of `README.md`/`index.md`, or the folder name) |
@@ -44,9 +47,23 @@ Open http://127.0.0.1:8000. Saving a file reloads the page. If port 8000 is busy
 | Nothing | `md-beauty serve .` | Uses 8000, or the next free port (8001, 8002, …) and prints it |
 | `--port` | `md-beauty serve . --port 8080` | Stops and tells you, so you never land on a port you didn't pick |
 | Environment variable | `export MD_BEAUTY_PORT=8080` | Same as `--port`; handy as a personal default |
-| Docker | `docker run --rm -p 8080:8000 -v "$PWD":/docs md-beauty serve .` | Pick the port on the **left** of `-p`; the right side stays 8000 |
+| Docker | `docker run --rm -p 127.0.0.1:8080:8000 -v "$PWD":/docs md-beauty serve .` | Pick the port on the **left** of `-p`; the right side stays 8000 |
 
 With Docker, put the command after the image name: `docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/docs md-beauty build . -o site` (`--user` keeps the new files owned by you).
+
+## Add pages from the browser
+
+When you serve a folder (or the empty workspace), you can add pages without leaving the browser:
+
+| How | What happens |
+|---|---|
+| **+** button in the header, or the `a` key | Opens **Add a page**: paste markdown, or upload `.md` files |
+| Drop `.md` files anywhere on the page | They are saved and the first one opens |
+| `Ctrl+V` anywhere (outside a text box) | Opens **Add a page** with the clipboard text |
+
+Each page is saved as a **real `.md` file** in the folder you serve. Its name comes from the name you type (`guide/my-page` makes a folder too) or from the first `# heading`. md-beauty never overwrites a file: a second `my-page` becomes `my-page-2.md`. The new page opens as soon as it's built.
+
+Adding is off for single files (`serve a.md b.md`), for `build`, and with `--read-only`. It only accepts requests from the page itself. Anyone who can open the page can add files, so keep Docker on `127.0.0.1` as in the examples here, and don't use `--host 0.0.0.0` on networks you don't trust.
 
 ## Reading controls
 
@@ -98,7 +115,7 @@ exclude:                          # gitignore-style patterns to leave out
 
 ```bash
 git clone https://github.com/engmhmoud/md-beauty.git && cd md-beauty
-docker build -t md-beauty . && docker run --rm -p 8000:8000 -v "$PWD/examples/demo":/docs md-beauty serve .
+docker build -t md-beauty . && docker run --rm -p 127.0.0.1:8000:8000 -v "$PWD/examples/demo":/docs md-beauty serve .
 ```
 
 ## How it works

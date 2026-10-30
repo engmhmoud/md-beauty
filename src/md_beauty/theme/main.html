@@ -2,6 +2,7 @@
 
 {% block extrahead %}
   {{ super() }}
+  {% if config.extra.md_beauty_edit %}<meta name="md-beauty-edit" content="1">{% endif %}
   <script>
     // apply saved reading layout before first paint (see assets/md-beauty.js)
     (function () {

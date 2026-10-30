@@ -148,10 +148,14 @@ def _h1(path):
 
 def on_files(files, config, **_):
     pages = [f for f in files.documentation_pages() if f.inclusion.is_included()]
-    if not pages or any(f.src_uri in ("index.md", "README.md") for f in pages):
+    if not pages:  # empty folder: a home page with "add a page" (md-beauty.js fills .mb-empty)
+        content = f'# {config["site_name"]}\n\n<div class="mb-empty"><p>No pages yet.</p></div>\n'
+        files.append(File.generated(config, "index.md", content=content, inclusion=InclusionLevel.INCLUDED))
         return files
-    if len(pages) == 1:
-        pages[0].dest_uri = "index.html"  # a single file is the whole site
+    if any(f.src_uri in ("index.md", "README.md") for f in pages):
+        return files
+    if len(pages) == 1 and config["extra"].get("md_beauty_single_file"):
+        pages[0].dest_uri = "index.html"  # `serve file.md`: that file is the whole site
         pages[0].url = ""
         return files
     lines = [f"# {config['site_name']}", ""]

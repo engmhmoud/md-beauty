@@ -1,6 +1,7 @@
 """md-beauty: view one markdown file, several, or a whole folder as a clean website.
 
-    md-beauty serve notes/                 live preview at http://127.0.0.1:8000
+    md-beauty serve                        empty workspace (./md-beauty-notes): add or paste pages
+    md-beauty serve notes/                 live preview at http://127.0.0.1:8000 (you can add pages)
     md-beauty serve intro.md setup.md      only these files
     md-beauty build notes/ -o site         static HTML you can upload anywhere
 """
@@ -21,6 +22,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG_NAME = ".md-beauty.yml"
 ALWAYS_EXCLUDED = ["node_modules/**", "__pycache__/**", ".venv/**", "venv/**"]
 IMAGES = ["*.png", "*.jpg", "*.jpeg", "*.gif", "*.svg", "*.webp"]
+WORKSPACE = "md-beauty-notes"
 
 
 def _resolve(paths):
@@ -66,7 +68,7 @@ def _title(docs_dir, include, options, cli_title):
     return os.path.basename(docs_dir).replace("-", " ").replace("_", " ").title() or "Notes"
 
 
-def write_config(paths, title=None, site_url=None, extra_exclude=()):
+def write_config(paths, title=None, site_url=None, extra_exclude=(), edit=False):
     docs_dir, include = _resolve(paths)
     options = _load_options(docs_dir)
     exclude = ["*", *[f"!{p}" for p in include], *[f"!{p}" for p in IMAGES], "!/assets/**",
@@ -98,7 +100,8 @@ def write_config(paths, title=None, site_url=None, extra_exclude=()):
         "extra_css": ["assets/md-beauty.css"],
         "extra_javascript": ["assets/md-beauty.js"],
         "hooks": [os.path.join(HERE, "hooks.py")],
-        "extra": {"md_beauty": options, "generator": False},
+        "extra": {"md_beauty": options, "md_beauty_edit": edit, "generator": False,
+                  "md_beauty_single_file": len(include) == 1 and include[0] != "*.md" and not include[0].endswith("/**/*.md")},
         "exclude_docs": "\n".join(exclude),
         "validation": {
             "omitted_files": "ignore",
@@ -158,7 +161,10 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="command", required=True)
 
     serve = sub.add_parser("serve", help="live preview; reloads when you save a file")
-    serve.add_argument("paths", nargs="+", help="a folder, or one or more .md files")
+    serve.add_argument("paths", nargs="*",
+                       help=f"a folder, or one or more .md files (default: an empty workspace in ./{WORKSPACE})")
+    serve.add_argument("--read-only", action="store_true",
+                       help="hide 'Add page' (adding is on when you serve a folder)")
     serve.add_argument("--host", default=os.environ.get("MD_BEAUTY_HOST", "127.0.0.1"),
                        help="address to listen on (default: 127.0.0.1, or $MD_BEAUTY_HOST)")
     serve.add_argument("--port", type=int,
@@ -177,10 +183,20 @@ def main(argv=None):
         env_port = os.environ.get("MD_BEAUTY_PORT")
         explicit = args.port is not None or env_port is not None
         port = pick_port(args.host, args.port or int(env_port or 8000), explicit)
-        config = write_config(args.paths, title=args.title)
+        paths, title = args.paths, args.title
+        if not paths:
+            os.makedirs(WORKSPACE, exist_ok=True)
+            print(f"md-beauty: workspace {os.path.abspath(WORKSPACE)} (pages you add are saved here)", flush=True)
+            paths = [WORKSPACE]
+            if not title and not _load_options(WORKSPACE).get("title"):
+                title = "My Notes"
+        # adding pages only makes sense when a whole folder is served
+        editable = not args.read_only and len(paths) == 1 and os.path.isdir(paths[0])
+        config = write_config(paths, title=title, edit=editable)
         if not os.path.exists("/.dockerenv"):  # in Docker the host port comes from `-p`, not from us
             print(f"md-beauty: open http://{'localhost' if args.host in ('127.0.0.1', '0.0.0.0') else args.host}:{port}", flush=True)
-        return _mkdocs("serve", "-f", config, "-a", f"{args.host}:{port}", "--livereload")
+        from .server import serve as run_server
+        return run_server(config, args.host, port, docs_dir=os.path.abspath(paths[0]) if editable else None)
 
     output = os.path.abspath(args.output)
     docs_dir, _ = _resolve(args.paths)
