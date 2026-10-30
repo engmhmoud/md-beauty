@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+  {% if page.parent and page.parent.title %}
+    <div class="mb-eyebrow">{{ page.parent.title }}</div>
+  {% endif %}
+  {{ super() }}
+  {% if page.file and not page.is_homepage %}
+    <div class="mb-read-row">
+      <span>Mark as read</span>
+      <button class="mb-read-toggle" type="button" role="switch" aria-checked="false"
+              data-page="{{ page.url }}" aria-label="Mark this page as read"></button>
+    </div>
+  {% endif %}
+{% endblock %}
