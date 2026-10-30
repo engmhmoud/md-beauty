@@ -27,6 +27,7 @@ Open http://127.0.0.1:8000. Saving a file reloads the page.
 | `md-beauty serve notes/` | Live preview of a folder |
 | `md-beauty serve intro.md setup.md` | Only these files |
 | `md-beauty build notes/ -o site` | Static HTML, ready for GitHub Pages or any web server |
+| `md-beauty serve . --port 8080` | Another port (with Docker: `-p 8080:8000`). Without `--port`, a busy 8000 moves to the next free port |
 
 ## Reading controls
 

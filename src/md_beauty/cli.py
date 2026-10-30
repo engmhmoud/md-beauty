@@ -8,6 +8,7 @@
 import argparse
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -129,6 +130,28 @@ def _mkdocs(*args):
     return subprocess.call([sys.executable, "-m", "mkdocs", *args], env=env)
 
 
+def _port_free(host, port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind((host, port))
+            return True
+        except OSError:
+            return False
+
+
+def pick_port(host, wanted, explicit, tries=20):
+    """The wanted port; when it was only the default and is busy, the next free one."""
+    if _port_free(host, wanted):
+        return wanted
+    if explicit:
+        sys.exit(f"md-beauty: port {wanted} is already in use. Pick another one with --port.")
+    for port in range(wanted + 1, wanted + tries + 1):
+        if _port_free(host, port):
+            print(f"md-beauty: port {wanted} is busy, using {port} instead.", flush=True)
+            return port
+    sys.exit(f"md-beauty: ports {wanted}-{wanted + tries} are all busy. Pick one with --port.")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="md-beauty", description="View markdown files as a clean website.")
     parser.add_argument("--version", action="version", version=f"md-beauty {__version__}")
@@ -136,8 +159,10 @@ def main(argv=None):
 
     serve = sub.add_parser("serve", help="live preview; reloads when you save a file")
     serve.add_argument("paths", nargs="+", help="a folder, or one or more .md files")
-    serve.add_argument("--host", default=os.environ.get("MD_BEAUTY_HOST", "127.0.0.1"))
-    serve.add_argument("--port", type=int, default=8000)
+    serve.add_argument("--host", default=os.environ.get("MD_BEAUTY_HOST", "127.0.0.1"),
+                       help="address to listen on (default: 127.0.0.1, or $MD_BEAUTY_HOST)")
+    serve.add_argument("--port", type=int,
+                       help="port (default: $MD_BEAUTY_PORT or 8000; the next free one if 8000 is busy)")
     serve.add_argument("--title", help="site name (default: README/index H1 or folder name)")
 
     build = sub.add_parser("build", help="write static HTML")
@@ -149,8 +174,13 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     if args.command == "serve":
+        env_port = os.environ.get("MD_BEAUTY_PORT")
+        explicit = args.port is not None or env_port is not None
+        port = pick_port(args.host, args.port or int(env_port or 8000), explicit)
         config = write_config(args.paths, title=args.title)
-        return _mkdocs("serve", "-f", config, "-a", f"{args.host}:{args.port}", "--livereload")
+        if not os.path.exists("/.dockerenv"):  # in Docker the host port comes from `-p`, not from us
+            print(f"md-beauty: open http://{'localhost' if args.host in ('127.0.0.1', '0.0.0.0') else args.host}:{port}", flush=True)
+        return _mkdocs("serve", "-f", config, "-a", f"{args.host}:{port}", "--livereload")
 
     output = os.path.abspath(args.output)
     docs_dir, _ = _resolve(args.paths)

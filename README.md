@@ -24,7 +24,7 @@ pipx install git+https://github.com/engmhmoud/md-beauty.git
 md-beauty serve notes/
 ```
 
-Open http://127.0.0.1:8000. Saving a file reloads the page.
+Open http://127.0.0.1:8000. Saving a file reloads the page. If port 8000 is busy, md-beauty uses the next free port and prints it.
 
 ## Commands
 
@@ -34,9 +34,19 @@ Open http://127.0.0.1:8000. Saving a file reloads the page.
 | `md-beauty serve intro.md setup.md` | Only these files (and related ones you list) |
 | `md-beauty build notes/ -o site` | Static HTML in `site/`, ready for GitHub Pages, Netlify or any web server |
 | `--title "My Notes"` | Site name (default: the H1 of `README.md`/`index.md`, or the folder name) |
-| `--host 0.0.0.0 --port 8080` | Open it from other devices on your network |
+| `--port 8080` | Use another port (or set `MD_BEAUTY_PORT=8080`) |
+| `--host 0.0.0.0` | Open it from other devices on your network |
 
-With Docker, put the command after the image name: `docker run --rm -p 8000:8000 -v "$PWD":/docs md-beauty build . -o site`.
+## Choosing the port
+
+| How | Example | If the port is busy |
+|---|---|---|
+| Nothing | `md-beauty serve .` | Uses 8000, or the next free port (8001, 8002, …) and prints it |
+| `--port` | `md-beauty serve . --port 8080` | Stops and tells you, so you never land on a port you didn't pick |
+| Environment variable | `export MD_BEAUTY_PORT=8080` | Same as `--port`; handy as a personal default |
+| Docker | `docker run --rm -p 8080:8000 -v "$PWD":/docs md-beauty serve .` | Pick the port on the **left** of `-p`; the right side stays 8000 |
+
+With Docker, put the command after the image name: `docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/docs md-beauty build . -o site` (`--user` keeps the new files owned by you).
 
 ## Reading controls
 
