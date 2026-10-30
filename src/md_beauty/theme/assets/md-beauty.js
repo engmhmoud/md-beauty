@@ -132,11 +132,9 @@
 // ---------------------------------------------------------------- add pages (only with `md-beauty serve <folder>`)
 // Paste markdown or upload .md files; the server saves them as real files, MkDocs rebuilds,
 // and we open the new page as soon as it is built.
-(function () {
-  if (!document.querySelector('meta[name="md-beauty-edit"]')) return;
-  var API = "/_md-beauty/pages";
-  var PENDING = "mb-open-after-save";  // survives the live-reload refresh that follows a save
-  var dialog, toastTimer;
+// shared helpers for the serve-only features below
+var mdBeauty = (function () {
+  var toastTimer;
 
   function el(tag, attrs, children) {
     var node = document.createElement(tag);
@@ -157,6 +155,20 @@
     clearTimeout(toastTimer);
     if (isError) toastTimer = setTimeout(function () { box.classList.remove("mb-toast-show"); }, 6000);
   }
+
+  function typing(t) {
+    return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+  }
+
+  return { el: el, toast: toast, typing: typing };
+})();
+
+(function () {
+  if (!document.querySelector('meta[name="md-beauty-edit"]')) return;
+  var API = "/_md-beauty/pages";
+  var PENDING = "mb-open-after-save";  // survives the live-reload refresh that follows a save
+  var el = mdBeauty.el, toast = mdBeauty.toast, typing = mdBeauty.typing;
+  var dialog;
 
   function save(name, content) {
     return fetch(API, {
@@ -335,28 +347,24 @@
     }
   }
 
-  function typing(t) {
-    return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
-  }
-
   // drop .md files anywhere: save them all and open the first
   document.addEventListener("dragover", function (e) {
     if (e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types, "Files") >= 0) e.preventDefault();
   });
   document.addEventListener("drop", function (e) {
-    if (!e.dataTransfer || !e.dataTransfer.files.length || (dialog && dialog.open)) return;
+    if (!e.dataTransfer || !e.dataTransfer.files.length || document.querySelector("dialog[open]")) return;
     e.preventDefault();
     toast("Saving…");
     uploadFiles(e.dataTransfer.files).then(finish).catch(function (err) { toast(err.message, true); });
   });
   // Ctrl+V outside a text field: open the paste tab with the clipboard text
   document.addEventListener("paste", function (e) {
-    if (typing(e.target) || (dialog && dialog.open)) return;
+    if (typing(e.target) || document.querySelector("dialog[open]")) return;
     var pasted = e.clipboardData && e.clipboardData.getData("text/plain");
     if (pasted && pasted.trim()) { e.preventDefault(); openDialog("paste", pasted); }
   });
   document.addEventListener("keydown", function (e) {
-    if (e.key === "a" && !e.ctrlKey && !e.metaKey && !e.altKey && !typing(e.target) && !(dialog && dialog.open)) {
+    if (e.key === "a" && !e.ctrlKey && !e.metaKey && !e.altKey && !typing(e.target) && !document.querySelector("dialog[open]")) {
       e.preventDefault();
       openDialog("paste");
     }
@@ -364,4 +372,196 @@
 
   if (window.document$) window.document$.subscribe(addButtons);
   else document.addEventListener("DOMContentLoaded", addButtons);
+})();
+
+// ---------------------------------------------------------------- open another folder (only with `md-beauty serve`)
+// Browse folders on this computer, pick one, and md-beauty restarts on it (same port).
+(function () {
+  var rootMeta = document.querySelector('meta[name="md-beauty-root"]');
+  if (!rootMeta) return;
+  var el = mdBeauty.el, toast = mdBeauty.toast, typing = mdBeauty.typing;
+  var RECENT = "md-beauty-recent-folders";
+  var OPENING = "mb-opening-folder";  // survives the live-reload refresh while md-beauty restarts
+  var ICON = '<svg viewBox="0 0 24 24"><path d="M10 4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h6Z"/></svg>';
+  var dialog;
+
+  function api(path, options) {
+    options = options || {};
+    options.headers = Object.assign({ "X-MD-Beauty": "1" }, options.headers || {});
+    return fetch(path, options).then(function (res) {
+      return res.json().then(function (data) {
+        if (!res.ok) throw new Error(data.error || "Request failed.");
+        return data;
+      });
+    });
+  }
+
+  function recent() {
+    try { return JSON.parse(localStorage.getItem(RECENT)) || []; } catch (e) { return []; }
+  }
+  function remember(path) {
+    var list = [path].concat(recent().filter(function (p) { return p !== path; })).slice(0, 8);
+    try { localStorage.setItem(RECENT, JSON.stringify(list)); } catch (e) { /* private mode */ }
+  }
+  remember(rootMeta.content);
+
+  // a live-reload refresh may land here mid-switch: finish on the new folder's home page
+  (function resume() {
+    var pending;
+    try { pending = sessionStorage.getItem(OPENING); } catch (e) { return; }
+    if (!pending) return;
+    if (pending === rootMeta.content) {
+      sessionStorage.removeItem(OPENING);
+      if (location.pathname !== "/") location.replace("/");
+    }
+  })();
+
+  function servedRoot(html) {
+    var meta = new DOMParser().parseFromString(html, "text/html").querySelector('meta[name="md-beauty-root"]');
+    return meta && meta.content;
+  }
+
+  // after a restart the new server answers with the new root; then go to its home page
+  function waitForRoot(path, tries) {
+    tries = tries || 0;
+    return fetch("/", { cache: "no-store" }).then(function (res) { return res.text(); }).then(function (html) {
+      if (servedRoot(html) === path) {
+        try { sessionStorage.removeItem(OPENING); } catch (e) { /* private mode */ }
+        location.href = "/";
+        return;
+      }
+      throw new Error("not yet");
+    }).catch(function () {
+      if (tries > 120) throw new Error("md-beauty did not come back. Check the terminal.");
+      return new Promise(function (r) { setTimeout(r, 500); }).then(function () { return waitForRoot(path, tries + 1); });
+    });
+  }
+
+  function open(path) {
+    toast("Opening " + path + "…");
+    return api("/_md-beauty/open", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: path })
+    }).then(function (data) {
+      remember(data.path);
+      try { sessionStorage.setItem(OPENING, data.path); } catch (e) { /* private mode */ }
+      if (dialog) dialog.close();
+      return waitForRoot(data.path);
+    }).catch(function (err) { toast(err.message, true); throw err; });
+  }
+
+  function buildDialog() {
+    var current = rootMeta.content;
+    var crumbs = el("div", { class: "mb-crumbs" });
+    var list = el("ul", { class: "mb-dirs" });
+    var info = el("p", { class: "mb-hint" });
+    var pathInput = el("input", { type: "text", class: "mb-input", placeholder: "Type or paste a folder path, then Enter" });
+    var recentBox = el("div", { class: "mb-recent" });
+    var error = el("p", { class: "mb-error", role: "alert" });
+    var up = el("button", { type: "button", class: "mb-btn-text", text: "↑ Up" });
+    var cancel = el("button", { type: "button", class: "mb-btn-text", text: "Cancel" });
+    var submit = el("button", { type: "submit", class: "mb-btn-primary", text: "Open this folder" });
+    var form = el("form", { method: "dialog", class: "mb-form" }, [
+      el("h2", { text: "Open folder" }),
+      pathInput, recentBox,
+      el("div", { class: "mb-crumb-row" }, [up, crumbs]),
+      list, info, error,
+      el("div", { class: "mb-actions" }, [
+        el("span", { class: "mb-hint", text: "md-beauty restarts on the folder you pick. Nothing is copied." }),
+        cancel, submit
+      ])
+    ]);
+    var d = el("dialog", { class: "mb-dialog", "aria-label": "Open folder" }, [form]);
+    var parent = null;
+
+    function show(path) {
+      error.textContent = "";
+      return api("/_md-beauty/dirs?path=" + encodeURIComponent(path)).then(function (data) {
+        current = data.path;
+        parent = data.parent;
+        up.disabled = !parent;
+        pathInput.value = data.path;
+        crumbs.innerHTML = "";
+        var sep = data.path.indexOf("\\") >= 0 ? "\\" : "/";
+        var parts = data.path.split(sep), acc = "";
+        parts.forEach(function (part, i) {
+          acc = i === 0 ? (part || sep) : (acc.slice(-1) === sep ? acc : acc + sep) + part;
+          if (i > 0 && !part) return;
+          var target = acc;
+          var b = el("button", { type: "button", class: i === 0 && !part ? "mb-crumb mb-crumb-root" : "mb-crumb", text: i === 0 && !part ? sep : part });
+          b.addEventListener("click", function () { show(target); });
+          crumbs.appendChild(b);
+        });
+        list.innerHTML = "";
+        data.dirs.forEach(function (dir) {
+          var b = el("button", { type: "button", class: "mb-dir" }, [
+            el("span", { class: "mb-dir-name", text: dir.name }),
+            el("span", { class: "mb-dir-count", text: dir.md_files ? dir.md_files + " .md" : "" })
+          ]);
+          b.addEventListener("click", function () { show(dir.path); });
+          b.addEventListener("dblclick", function () { open(dir.path); });
+          list.appendChild(el("li", {}, [b]));
+        });
+        if (!data.dirs.length) list.appendChild(el("li", { class: "mb-hint", text: "No subfolders." }));
+        info.textContent = data.md_files === 1 ? "1 .md file in this folder." : data.md_files + " .md files in this folder.";
+        submit.disabled = data.path === rootMeta.content;
+        submit.textContent = submit.disabled ? "Already open" : "Open this folder";
+      }).catch(function (err) { error.textContent = err.message; });
+    }
+
+    function showRecent() {
+      recentBox.innerHTML = "";
+      var items = recent().filter(function (p) { return p !== rootMeta.content; });
+      if (!items.length) return;
+      recentBox.appendChild(el("span", { class: "mb-hint", text: "Recent:" }));
+      items.forEach(function (p) {
+        var b = el("button", { type: "button", class: "mb-chip", title: p, text: p.split(/[\\/]/).filter(Boolean).pop() || p });
+        b.addEventListener("click", function () { open(p); });
+        recentBox.appendChild(b);
+      });
+    }
+
+    up.addEventListener("click", function () { if (parent) show(parent); });
+    cancel.addEventListener("click", function () { d.close(); });
+    pathInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); show(pathInput.value.trim()); }
+    });
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      submit.disabled = true;
+      open(current).catch(function (err) { error.textContent = err.message; submit.disabled = false; });
+    });
+
+    d.open_at = function () {
+      showRecent();
+      if (!d.open) d.showModal();
+      show(rootMeta.content).then(function () { pathInput.focus(); pathInput.select(); });
+    };
+    document.body.appendChild(d);
+    return d;
+  }
+
+  function openDialog() {
+    dialog = dialog || buildDialog();
+    dialog.open_at();
+  }
+
+  function addButton() {
+    var controls = document.querySelector(".mb-controls");
+    if (!controls || controls.querySelector(".mb-btn-open")) return;
+    var b = el("button", { type: "button", class: "mb-btn mb-btn-open", title: "Open another folder  (o)", "aria-label": "Open folder", html: ICON });
+    b.addEventListener("click", openDialog);
+    controls.insertBefore(b, controls.firstChild);
+  }
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "o" && !e.ctrlKey && !e.metaKey && !e.altKey && !typing(e.target) && !document.querySelector("dialog[open]")) {
+      e.preventDefault();
+      openDialog();
+    }
+  });
+
+  if (window.document$) window.document$.subscribe(addButton);
+  else document.addEventListener("DOMContentLoaded", addButton);
 })();

@@ -68,7 +68,7 @@ def _title(docs_dir, include, options, cli_title):
     return os.path.basename(docs_dir).replace("-", " ").replace("_", " ").title() or "Notes"
 
 
-def write_config(paths, title=None, site_url=None, extra_exclude=(), edit=False):
+def write_config(paths, title=None, site_url=None, extra_exclude=(), edit=False, serving=False):
     docs_dir, include = _resolve(paths)
     options = _load_options(docs_dir)
     exclude = ["*", *[f"!{p}" for p in include], *[f"!{p}" for p in IMAGES], "!/assets/**",
@@ -100,7 +100,7 @@ def write_config(paths, title=None, site_url=None, extra_exclude=(), edit=False)
         "extra_css": ["assets/md-beauty.css"],
         "extra_javascript": ["assets/md-beauty.js"],
         "hooks": [os.path.join(HERE, "hooks.py")],
-        "extra": {"md_beauty": options, "md_beauty_edit": edit, "generator": False,
+        "extra": {"md_beauty": options, "md_beauty_edit": edit, "md_beauty_serving": serving, "generator": False,
                   "md_beauty_single_file": len(include) == 1 and include[0] != "*.md" and not include[0].endswith("/**/*.md")},
         "exclude_docs": "\n".join(exclude),
         "validation": {
@@ -135,6 +135,7 @@ def _mkdocs(*args):
 
 def _port_free(host, port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # as the server does; ignores closing connections
         try:
             sock.bind((host, port))
             return True
@@ -192,11 +193,12 @@ def main(argv=None):
                 title = "My Notes"
         # adding pages only makes sense when a whole folder is served
         editable = not args.read_only and len(paths) == 1 and os.path.isdir(paths[0])
-        config = write_config(paths, title=title, edit=editable)
+        config = write_config(paths, title=title, edit=editable, serving=True)
         if not os.path.exists("/.dockerenv"):  # in Docker the host port comes from `-p`, not from us
             print(f"md-beauty: open http://{'localhost' if args.host in ('127.0.0.1', '0.0.0.0') else args.host}:{port}", flush=True)
         from .server import serve as run_server
-        return run_server(config, args.host, port, docs_dir=os.path.abspath(paths[0]) if editable else None)
+        root = os.path.abspath(paths[0]) if os.path.isdir(paths[0]) else _resolve(paths)[0]
+        return run_server(config, args.host, port, root, editable=editable, read_only=args.read_only)
 
     output = os.path.abspath(args.output)
     docs_dir, _ = _resolve(args.paths)

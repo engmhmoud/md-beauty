@@ -34,6 +34,7 @@ Open http://127.0.0.1:8000. Saving a file reloads the page. If port 8000 is busy
 |---|---|
 | `md-beauty serve` | Empty workspace (`./md-beauty-notes`): add or paste your first pages in the browser |
 | `md-beauty serve notes/` | Live preview of a folder (all `.md` files inside it); you can add pages too |
+| **Folder button** or `o` (while serving) | Switch to another folder without restarting by hand |
 | `md-beauty serve intro.md setup.md` | Only these files (and related ones you list) |
 | `md-beauty build notes/ -o site` | Static HTML in `site/`, ready for GitHub Pages, Netlify or any web server |
 | `--title "My Notes"` | Site name (default: the H1 of `README.md`/`index.md`, or the folder name) |
@@ -64,6 +65,16 @@ When you serve a folder (or the empty workspace), you can add pages without leav
 Each page is saved as a **real `.md` file** in the folder you serve. Its name comes from the name you type (`guide/my-page` makes a folder too) or from the first `# heading`. md-beauty never overwrites a file: a second `my-page` becomes `my-page-2.md`. The new page opens as soon as it's built.
 
 Adding is off for single files (`serve a.md b.md`), for `build`, and with `--read-only`. It only accepts requests from the page itself. Anyone who can open the page can add files, so keep Docker on `127.0.0.1` as in the examples here, and don't use `--host 0.0.0.0` on networks you don't trust.
+
+## Open another folder
+
+While `md-beauty serve` runs, the **folder** button in the header (or the `o` key) opens **Open folder**:
+
+- Browse your folders (with how many `.md` files each holds), or type or paste a path and press Enter
+- **Open this folder** restarts md-beauty on it, on the same port, and the page reloads; nothing is copied
+- **Recent** remembers the folders you opened (in this browser)
+
+With Docker, md-beauty only sees what you mount. Mount a parent folder to switch between its subfolders, for example `-v "$HOME/notes":/docs` and then `md-beauty serve project-a`.
 
 ## Reading controls
 

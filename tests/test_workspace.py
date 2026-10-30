@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from md_beauty.server import handle_api
+from md_beauty.server import handle
 from md_beauty.workspace import WorkspaceError, clean_name, page_url, save_page
 
 
@@ -46,10 +46,11 @@ def test_page_urls_follow_directory_urls():
 
 def _call(tmp_path, body, headers):
     raw = json.dumps(body).encode()
-    environ = {"REQUEST_METHOD": "POST", "CONTENT_LENGTH": str(len(raw)), "wsgi.input": io.BytesIO(raw),
-               "HTTP_HOST": "localhost:8000", **headers}
+    environ = {"REQUEST_METHOD": "POST", "PATH_INFO": "/_md-beauty/pages", "CONTENT_LENGTH": str(len(raw)),
+               "wsgi.input": io.BytesIO(raw), "HTTP_HOST": "localhost:8000", **headers}
     seen = {}
-    out = handle_api(environ, lambda status, _: seen.setdefault("status", status), str(tmp_path), "/")
+    out = handle(environ, lambda status, _: seen.setdefault("status", status),
+                 editable_dir=str(tmp_path), root=str(tmp_path), mount_path="/", restart=None)
     return seen["status"], json.loads(b"".join(out))
 
 
@@ -74,3 +75,54 @@ def test_api_refuses_other_origins(tmp_path):
 def test_api_refuses_empty_text(tmp_path):
     status, data = _call(tmp_path, {"content": "  "}, {"HTTP_X_MD_BEAUTY": "1"})
     assert status.startswith("400") and "no markdown" in data["error"]
+
+
+def test_list_dirs_shows_folders_with_md_counts_and_hides_noise(tmp_path):
+    (tmp_path / "notes").mkdir()
+    (tmp_path / "notes" / "a.md").write_text("# a")
+    (tmp_path / "notes" / "b.md").write_text("# b")
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "top.md").write_text("# top")
+    from md_beauty.server import list_dirs
+    data = list_dirs(str(tmp_path))
+    assert data["path"] == str(tmp_path)
+    assert data["md_files"] == 1
+    assert data["dirs"] == [{"name": "notes", "path": str(tmp_path / "notes"), "md_files": 2}]
+    assert data["parent"] == str(tmp_path.parent)
+
+
+def _request(method, path, body=None, query=""):
+    raw = json.dumps(body or {}).encode()
+    return {"REQUEST_METHOD": method, "PATH_INFO": path, "QUERY_STRING": query, "CONTENT_LENGTH": str(len(raw)),
+            "wsgi.input": io.BytesIO(raw), "HTTP_HOST": "localhost:8000", "HTTP_X_MD_BEAUTY": "1"}
+
+
+def test_open_restarts_on_an_existing_folder_only(tmp_path):
+    opened = []
+    seen = {}
+
+    def start_response(status, _):
+        seen["status"] = status
+
+    def restart(path):
+        opened.append(path)
+
+    out = handle(_request("POST", "/_md-beauty/open", {"path": "/no/such/folder"}), start_response,
+                 editable_dir=None, root=str(tmp_path), mount_path="/", restart=restart)
+    assert seen["status"].startswith("400") and "Not a folder" in json.loads(b"".join(out))["error"]
+
+    out = handle(_request("POST", "/_md-beauty/open", {"path": str(tmp_path)}), start_response,
+                 editable_dir=None, root=str(tmp_path), mount_path="/", restart=restart)
+    assert seen["status"].startswith("200")
+    import time
+    time.sleep(0.6)  # restart runs just after the answer is sent
+    assert opened == [str(tmp_path)]
+
+
+def test_adding_pages_is_refused_when_not_editable(tmp_path):
+    seen = {}
+    handle(_request("POST", "/_md-beauty/pages", {"content": "# x"}), lambda s, _: seen.setdefault("status", s),
+           editable_dir=None, root=str(tmp_path), mount_path="/", restart=None)
+    assert seen["status"].startswith("403")
+    assert not list(tmp_path.iterdir())
