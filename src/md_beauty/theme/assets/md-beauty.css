@@ -449,3 +449,26 @@ body { background: var(--mb-paper); }
 }
 .mb-chip:hover { border-color: var(--mb-primary); color: var(--mb-primary-dark); }
 .mb-btn-text:disabled { opacity: .4; cursor: default; }
+
+/* ---------- workspace page (md-beauty-workspace.html): a folder from this computer, read in the browser */
+.mb-ws-start { text-align: center; padding: 3em 1em; }
+.mb-ws-start h1 { margin-bottom: .4em; }
+.mb-ws-start .mb-btn-primary { font-size: .95em; padding: .7em 1.6em; }
+.mb-ws-recent { display: flex; flex-wrap: wrap; gap: .4em; justify-content: center; align-items: center; margin-top: 1.5em; }
+.mb-ws-recent .mb-hint { width: 100%; margin: 0; }
+.mb-ws-folder { display: flex; flex-direction: column; gap: .15rem; padding: .2rem .5rem .6rem; }
+.mb-ws-folder strong { color: var(--mb-text); font-size: .8rem; word-break: break-word; }
+.mb-ws-folder:empty { display: none; }
+.mb-ws-folder-actions { display: flex; gap: .3rem; margin-top: .3rem; }
+.mb-ws-search { margin: 0 0 .5rem; font-size: .65rem; padding: .4rem .6rem; }
+.mb-ws-nav .md-nav__list { padding: 0; }
+.mb-ws-nav .md-nav__list .md-nav__list { padding-left: .6rem; }
+.mb-ws-section { cursor: default; }
+.mb-ws-section:hover { background: transparent !important; }
+.mb-ws-dir > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: .3rem; }
+.mb-ws-dir > summary::-webkit-details-marker { display: none; }
+.mb-ws-dir > summary::after { content: "›"; margin-left: auto; color: var(--mb-faint); transition: transform .15s; }
+.mb-ws-dir[open] > summary::after { transform: rotate(90deg); }
+.mb-ws-hit-path { display: block; color: var(--mb-faint); font-size: .55rem; word-break: break-all; }
+.md-typeset a.mb-ws-missing { text-decoration-style: dashed; color: var(--mb-muted); }
+.mb-ws-nav .md-nav__link:has(.mb-ws-hit-path) { flex-direction: column; align-items: flex-start; }

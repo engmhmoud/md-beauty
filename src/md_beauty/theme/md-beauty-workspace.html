@@ -1,0 +1,62 @@
+{#- Workspace: open a folder from this computer and read its .md files in the browser.
+    Use it on any md-beauty site with a page whose front matter is `template: md-beauty-workspace.html`.
+    Files are read by the browser only (assets/md-beauty-workspace.js); nothing is uploaded. -#}
+{% extends "main.html" %}
+
+{% block config %}
+  {{ super() }}
+  <script>
+    // This page routes with "#/path.md" itself; Material's instant navigation must stay off here,
+    // or it reloads parts of the page on back/forward. Edit the config before the bundle reads it.
+    (function () {
+      var node = document.getElementById("__config");
+      var cfg = JSON.parse(node.textContent);
+      cfg.features = cfg.features.filter(function (f) { return f.indexOf("navigation.instant") !== 0; });
+      node.textContent = JSON.stringify(cfg);
+    })();
+  </script>
+{% endblock %}
+
+{% block site_nav %}
+  <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+    <div class="md-sidebar__scrollwrap">
+      <div class="md-sidebar__inner">
+        <nav class="md-nav md-nav--primary mb-ws-nav" aria-label="Files">
+          <div class="mb-ws-folder" id="mb-ws-folder"></div>
+          <input class="mb-input mb-ws-search" id="mb-ws-search" type="search" placeholder="Filter pages…" hidden>
+          <ul class="md-nav__list" id="mb-ws-tree"></ul>
+        </nav>
+      </div>
+    </div>
+  </div>
+  <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+    <div class="md-sidebar__scrollwrap">
+      <div class="md-sidebar__inner">
+        <nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+          <label class="md-nav__title" id="mb-ws-toc-title" hidden>Table of contents</label>
+          <ul class="md-nav__list" id="mb-ws-toc"></ul>
+        </nav>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block content %}
+  <div id="mb-ws" class="mb-ws">
+    <div class="mb-ws-start" id="mb-ws-start">
+      <h1>{{ page.title }}</h1>
+      <p>Open a folder on your computer and read its markdown files in this style.
+         <strong>Nothing is uploaded</strong>: your browser reads the files directly.</p>
+      <div class="mb-empty-actions">
+        <button type="button" class="mb-btn-primary" id="mb-ws-open">Open folder</button>
+      </div>
+      <p class="mb-hint" id="mb-ws-support"></p>
+      <div class="mb-ws-recent" id="mb-ws-recent"></div>
+      <noscript><p>The workspace needs JavaScript.</p></noscript>
+    </div>
+    <div class="mb-ws-page" id="mb-ws-page" hidden>
+      <div class="mb-eyebrow" id="mb-ws-eyebrow"></div>
+      <div id="mb-ws-article"></div>
+    </div>
+  </div>
+{% endblock %}

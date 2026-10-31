@@ -76,6 +76,29 @@ While `md-beauty serve` runs, the **folder** button in the header (or the `o` ke
 
 With Docker, md-beauty only sees what you mount. Mount a parent folder to switch between its subfolders, for example `-v "$HOME/notes":/docs` and then `md-beauty serve project-a`.
 
+## Workspace: read a folder from your computer, in the browser
+
+The live demo has a **[Workspace](https://engmhmoud.github.io/md-beauty/workspace/)** page. Click **Open folder**, pick a folder on your computer, and read its `.md` files in this style. There's nothing to install, and **nothing is uploaded**: your browser reads the files directly.
+
+| | Chrome / Edge | Firefox / Safari |
+|---|---|---|
+| Open a folder | Yes | Yes (read once, as a snapshot) |
+| Page updates when you save a file | Yes (new and removed files too) | Reload: pick the folder again |
+| Recent folders | Yes | No |
+
+The sidebar shows the folder's files and subfolders, with a filter box. Links between pages, images, callouts, tags and `.md-beauty.yml` (title, order, section names, exclude) all work.
+
+The workspace renders markdown with [markdown-it](https://github.com/markdown-it/markdown-it) and cleans the HTML with [DOMPurify](https://github.com/cure53/DOMPurify), so a file's scripts never run. It adds the same md-beauty extras on top. Both libraries load from jsDelivr, pinned to exact versions.
+
+To add a workspace page to your own md-beauty site, create a page with this front matter:
+
+```markdown
+---
+template: md-beauty-workspace.html
+title: Workspace
+---
+```
+
 ## Reading controls
 
 The article is the main part of the page. On large screens the text grows on its own, and you can give the article almost the whole screen:
