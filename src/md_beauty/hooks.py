@@ -5,16 +5,21 @@
 2. on_files: a home page when the folder has no index.md / README.md.
 3. on_nav: section names from each folder's README/index H1, custom order, "_" folders last.
 4. on_page_content: blockquotes -> info / tip / warning callouts, `[MUST]` -> tag pills.
+5. on_post_build: an app manifest when a page uses the workspace template, so the site can be
+   installed as an app (and open .md files from the computer's "Open with" menu).
 
 Options come from `extra.md_beauty` in the generated mkdocs.yml (see cli.py).
 """
 
+import json
 import os
 import re
 
 from mkdocs.structure.files import File, InclusionLevel
 
 OPTIONS = {}
+WORKSPACE_TEMPLATE = "md-beauty-workspace.html"
+WORKSPACE_URLS = []
 
 # ---------------------------------------------------------------- 1. markdown fixes
 
@@ -119,12 +124,15 @@ def fix_lists(md):
 
 
 def on_config(config, **_):
+    WORKSPACE_URLS.clear()
     OPTIONS.clear()
     OPTIONS.update(config.get("extra", {}).get("md_beauty", {}) or {})
     return config
 
 
 def on_page_markdown(markdown, page, **_):
+    if page.meta.get("template") == WORKSPACE_TEMPLATE:
+        WORKSPACE_URLS.append(page.url)
     title = (OPTIONS.get("pages") or {}).get(page.file.src_uri)
     if title:
         page.meta["title"] = title
@@ -275,3 +283,36 @@ def render_extras(html):
 def on_page_content(html, page, **_):
     _clean_toc(page.toc.items)
     return render_extras(html)
+
+
+# ---------------------------------------------------------------- 5. installable workspace
+
+
+def manifest(site_name, workspace_url):
+    """The web app manifest; URLs are relative to the manifest at the site root."""
+    start = "./" + workspace_url
+    return {
+        "id": start,
+        "name": site_name,
+        "short_name": site_name[:12],
+        "description": "Read and edit markdown files and folders from your computer.",
+        "start_url": start,
+        "scope": "./",
+        "display": "standalone",
+        "background_color": "#ffffff",
+        "theme_color": "#299a8d",
+        "icons": [
+            {"src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png"},
+            {"src": "assets/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+        ],
+        "file_handlers": [{"action": start, "accept": {"text/markdown": [".md", ".markdown"]}}],
+    }
+
+
+def on_post_build(config, **_):
+    if not WORKSPACE_URLS:
+        return
+    path = os.path.join(config["site_dir"], "manifest.webmanifest")
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(manifest(config["site_name"], WORKSPACE_URLS[0]), fh, indent=2)

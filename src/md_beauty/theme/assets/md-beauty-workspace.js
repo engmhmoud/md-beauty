@@ -1,15 +1,15 @@
-// md-beauty workspace: open a folder on this computer, read and edit its .md files in the browser.
+// md-beauty workspace: open a folder or files on this computer, read and edit them in the browser.
 // Active only on pages built with the md-beauty-workspace.html template. Nothing is uploaded:
-// files are read with the File System Access API (Chrome/Edge: live reload, recent folders, and
-// Save writes back into the folder) or a folder <input> (other browsers: a snapshot; Save downloads).
+// files are read with the File System Access API (Chrome/Edge: live reload, recent items, and
+// Save writes back to the files) or file inputs (other browsers: a snapshot; Save downloads).
+// Installed as an app (manifest + sw.js), it also opens .md files from the computer's "Open with".
 (function () {
   "use strict";
 
-  var LIBS = [
-    "https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js",
-    "https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js",
-    "https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"
-  ];
+  // markdown-it 14.1.0, DOMPurify 3.2.4, js-yaml 4.1.0: shipped with the theme, so the app works offline
+  var VENDOR = (document.currentScript ? document.currentScript.src : "").replace(/[^/]*$/, "") + "vendor/";
+  var LIBS = [VENDOR + "markdown-it.min.js", VENDOR + "purify.min.js", VENDOR + "js-yaml.min.js"];
+  var MD_TYPES = [{ description: "Markdown", accept: { "text/markdown": [".md", ".markdown"] } }];
   var MD_RE = /\.(md|markdown)$/i;
   var IMG_RE = /\.(png|jpe?g|gif|svg|webp)$/i;
   var SKIP = { node_modules: 1, __pycache__: 1, venv: 1, "site-packages": 1 };
@@ -21,6 +21,8 @@
   var TIP_WORDS = ["tip", "interview", "takeaway", "remember", "rule of thumb", "must know", "shortcut",
                    "key idea", "core idea", "try it", "in short", "tl;dr", "answer"];
   var canPick = typeof window.showDirectoryPicker === "function";
+  var canPickFiles = typeof window.showOpenFilePicker === "function";
+  var canSaveAs = typeof window.showSaveFilePicker === "function";
 
   var ws = null;        // the open folder: { name, live, pages, images, options, tree }
   var libsReady = null;
@@ -31,6 +33,7 @@
   var editing = null;   // the path shown in the editor
   var previewUrls = [];
   var previewTimer = null;
+  var installEvent = null;
 
   // ------------------------------------------------------------------ small helpers
 
@@ -269,14 +272,16 @@
     var count = Object.keys(ws.pages).length;
     bar.innerHTML = "";
     var reload = el("button", { type: "button", class: "mb-chip", title: "Read the folder again", text: "Reload" });
-    var other = el("button", { type: "button", class: "mb-chip", title: "Open another folder", text: "Open…" });
+    var other = el("button", { type: "button", class: "mb-chip", title: "Open another folder", text: "Folder…" });
+    var files = el("button", { type: "button", class: "mb-chip", title: "Open .md files", text: "Files…" });
     var add = el("button", { type: "button", class: "mb-chip mb-ws-add", title: "Create a new .md file", text: "+ New page" });
     reload.addEventListener("click", function () { reopen(); });
     other.addEventListener("click", function () { pick(); });
+    files.addEventListener("click", function () { pickFiles(); });
     add.addEventListener("click", newPageDialog);
     bar.appendChild(el("strong", { text: ws.folder }));
     bar.appendChild(el("span", { class: "mb-hint", text: count + (count === 1 ? " page" : " pages") + (ws.live ? " · live" : " · snapshot") }));
-    bar.appendChild(el("div", { class: "mb-ws-folder-actions" }, [add, ws.live || ws.handle ? reload : null, other]));
+    bar.appendChild(el("div", { class: "mb-ws-folder-actions" }, [add, ws.live || ws.handle ? reload : null, other, files]));
     $("mb-ws-search").hidden = false;
   }
 
@@ -466,7 +471,7 @@
       hideEditor();
       $("mb-ws-start").hidden = false;
       $("mb-ws-page").hidden = true;
-      $("mb-ws-support").textContent = "No .md files in “" + ws.folder + "”. Create one with “+ New page”, or pick another folder.";
+      $("mb-ws-support").textContent = "No .md files in “" + ws.folder + "”. Create one with “+ New page”, or open something else.";
       return;
     }
     showFolderBar();
@@ -489,8 +494,12 @@
     });
   }
 
+  function leaveDrafts() {
+    return !hasDirty() || window.confirm("Your unsaved edits will be lost. Open something else?");
+  }
+
   function pick() {
-    if (hasDirty() && !window.confirm("Your unsaved edits will be lost. Open another folder?")) return;
+    if (!leaveDrafts()) return;
     if (canPick) {
       return window.showDirectoryPicker({ id: "md-beauty-workspace", mode: "read" }).then(openHandle).catch(function (err) {
         if (err.name !== "AbortError") showError(err);
@@ -507,16 +516,102 @@
     input.click();
   }
 
-  function reopen() {
-    if (ws && ws.handle) {
-      var keep = ws.current;
-      return openHandle(ws.handle, true).then(function () { if (keep && ws.pages[keep]) render(keep, null, true); });
+  // ---- single files: the picker (Chrome/Edge), a file input, a drop, or the app's "Open with"
+
+  function filesLabel(list) { return list.length === 1 ? list[0].name : list.length + " files"; }
+
+  // files keep their own names; the same name twice becomes "notes (2).md"
+  function fileEntries(list, key) {
+    var taken = {};
+    return list.map(function (item) {
+      var name = item.name, n = 1;
+      while (taken[name]) {
+        n += 1;
+        name = item.name.replace(MD_RE, "") + " (" + n + ")" + (MD_RE.exec(item.name) || [""])[0];
+      }
+      taken[name] = true;
+      var entry = { path: name };
+      entry[key] = item;
+      return entry;
+    });
+  }
+
+  function openFileHandles(handles, keepDrafts) {
+    if (!keepDrafts) drafts = {};
+    return libs().then(function () {
+      return load(filesLabel(handles), fileEntries(handles, "handle"), true);
+    }).then(function () {
+      ws.files = handles.slice();
+      opened(ws, null);
+      return rememberFiles(handles);
+    });
+  }
+
+  function openPlainFiles(files) {
+    drafts = {};
+    return libs().then(function () {
+      return load(filesLabel(files), fileEntries(files, "file"), false);
+    }).then(function () { opened(ws, null); });
+  }
+
+  function pickFiles() {
+    if (!leaveDrafts()) return;
+    if (canPickFiles) {
+      return window.showOpenFilePicker({ multiple: true, types: MD_TYPES }).then(function (handles) {
+        return openFileHandles(handles);
+      }).catch(function (err) {
+        if (err.name !== "AbortError") showError(err);
+      });
     }
+    var input = el("input", { type: "file", multiple: "", accept: ".md,.markdown,text/markdown" });
+    input.addEventListener("change", function () {
+      if (input.files.length) openPlainFiles(Array.prototype.slice.call(input.files)).catch(showError);
+    });
+    input.click();
+  }
+
+  // a dropped folder opens as a folder, dropped .md files as files
+  function openDropped(transfer) {
+    var items = Array.prototype.filter.call(transfer.items || [], function (i) { return i.kind === "file"; });
+    var files = Array.prototype.slice.call(transfer.files || []);
+    // handles must be asked for while the drop event runs
+    var jobs = items.length && items[0].getAsFileSystemHandle ? items.map(function (i) {
+      try { return i.getAsFileSystemHandle().catch(function () { return null; }); } catch (e) { return Promise.resolve(null); }
+    }) : null;
+    if (!leaveDrafts()) return;
+    if (jobs) {
+      Promise.all(jobs).then(function (handles) {
+        handles = handles.filter(Boolean);
+        if (!handles.length) return openPlain();  // the drag source gave no handles
+        var dir = handles.filter(function (h) { return h.kind === "directory"; })[0];
+        if (dir) return openHandle(dir);
+        var mdFiles = handles.filter(function (h) { return h.kind === "file" && MD_RE.test(h.name); });
+        if (mdFiles.length) return openFileHandles(mdFiles);
+        showError(new Error("drop .md files or a folder."));
+      }).catch(showError);
+      return;
+    }
+    openPlain();
+
+    function openPlain() {
+      var mdPlain = files.filter(function (f) { return MD_RE.test(f.name); });
+      if (mdPlain.length) return openPlainFiles(mdPlain).catch(showError);
+      showError(new Error("drop .md files here. To open a folder in this browser, use “Open folder”."));
+    }
+  }
+
+  function reopen() {
+    var keep = ws && ws.current;
+    var again = function () { if (keep && ws.pages[keep]) render(keep, null, true); };
+    if (ws && ws.handle) return openHandle(ws.handle, true).then(again);
+    if (ws && ws.files) return openFileHandles(ws.files, true).then(again);
     return pick();
   }
 
   function showError(err) {
-    $("mb-ws-support").textContent = "Could not open the folder: " + (err && err.message ? err.message : err);
+    var message = "Could not open it: " + (err && err.message ? err.message : err);
+    $("mb-ws-support").textContent = message;
+    if ($("mb-ws-start").hidden && window.mdBeauty) window.mdBeauty.toast(message, true);
   }
 
   // live reload (Chrome/Edge): re-read the open page when its file changes; re-read the folder for new files
@@ -554,12 +649,14 @@
   function isDirty(path) { var d = drafts[path]; return !!d && d.text !== d.base; }
   function hasDirty() { return Object.keys(drafts).some(isDirty); }
 
-  // Save writes into the folder only with a folder handle (Chrome/Edge); otherwise it downloads the file
-  function canWrite(page) { return !!(ws && ws.handle && page && page.entry && page.entry.handle); }
+  // Save writes back only with a file handle (Chrome/Edge); otherwise it's "Save as" or a download
+  function canWrite(page) { return !!(ws && page && page.entry && page.entry.handle); }
 
-  // the folder is opened read-only; ask for write access the first time it's needed (during a click)
-  function askWrite() {
-    var h = ws.handle;
+  // asking on the folder covers all its files with one prompt; opened files are asked one by one
+  function writeHandle(page) { return ws.handle || page.entry.handle; }
+
+  // files are opened read-only; ask for write access the first time it's needed (during a click)
+  function askWrite(h) {
     if (!h.queryPermission) return Promise.resolve("granted");
     return h.queryPermission({ mode: "readwrite" }).then(function (state) {
       return state === "granted" ? state : h.requestPermission({ mode: "readwrite" });
@@ -595,8 +692,9 @@
     $("mb-ws-editstate").textContent = dirty ? "Unsaved changes" : (message || "");
     var write = canWrite(ws.pages[editing]);
     var save = $("mb-ws-save");
-    save.textContent = write ? "Save" : "Download";
-    save.title = write ? "Save into the folder (Ctrl+S)" : "This browser can't write to the folder: download the .md file (Ctrl+S)";
+    save.textContent = write ? "Save" : canSaveAs ? "Save as…" : "Download";
+    save.title = write ? "Save the file (Ctrl+S)" : canSaveAs ? "Choose where to save this new file (Ctrl+S)"
+      : "This browser can't write to your files: download the .md file (Ctrl+S)";
     save.disabled = write && !dirty;
     markActive(editing);
   }
@@ -651,7 +749,7 @@
     if (!ws || !ws.current || editing) return;
     var page = ws.pages[ws.current];
     drafts[page.path] = { text: page.text, base: page.text, baseModified: page.modified };
-    if (canWrite(page)) askWrite().catch(function () { /* asked again on Save */ });
+    if (canWrite(page)) askWrite(writeHandle(page)).catch(function () { /* asked again on Save */ });
     render(page.path);
   }
 
@@ -659,7 +757,7 @@
     var path = editing;
     if (isDirty(path)) {
       notice("You have unsaved changes.", [
-        [canWrite(ws.pages[path]) ? "Save and close" : "Download and close", function () { save().then(function (ok) { if (ok) finishEdit(); }); }],
+        [canWrite(ws.pages[path]) || canSaveAs ? "Save and close" : "Download and close", function () { save().then(function (ok) { if (ok) finishEdit(); }); }],
         ["Discard changes", function () { delete drafts[path]; render(path); }]
       ]);
       return;
@@ -704,15 +802,16 @@
   function save() {
     var path = editing, d = drafts[path], page = ws.pages[path];
     if (!path) return Promise.resolve(false);
+    if (!canWrite(page) && canSaveAs) return saveAs(path);
     if (!canWrite(page)) {
       download(path, d.text);
       adopt(path, d.text);
       showState("Downloaded " + basename(path));
       return Promise.resolve(true);
     }
-    return askWrite().then(function (state) {
+    return askWrite(writeHandle(page)).then(function (state) {
       if (state !== "granted") {
-        notice("The browser did not allow saving into this folder.", [["Download a copy", function () { download(path, d.text); }]]);
+        notice("The browser did not allow saving this file.", [["Download a copy", function () { download(path, d.text); }]]);
         return false;
       }
       return page.entry.handle.getFile().then(function (f) {
@@ -730,6 +829,18 @@
       });
     }).catch(function (err) {
       notice("Could not save: " + (err && err.message ? err.message : err));
+      return false;
+    });
+  }
+
+  // a new page with no file yet (opened files or a snapshot): the user picks where it goes
+  function saveAs(path) {
+    return window.showSaveFilePicker({ suggestedName: basename(path), types: MD_TYPES }).then(function (handle) {
+      ws.pages[path].entry = { path: path, handle: handle };
+      if (ws.files) ws.files.push(handle);
+      return write(path);
+    }, function (err) {
+      if (err.name !== "AbortError") notice("Could not save: " + err.message);
       return false;
     });
   }
@@ -803,7 +914,7 @@
     var folder = dirname(rel);
     var made;
     if (ws.handle) {
-      made = askWrite().then(function (state) {
+      made = askWrite(ws.handle).then(function (state) {
         if (state !== "granted") throw new Error("The browser did not allow writing to this folder.");
         return dirHandle(folder);
       }).then(function (dir) {
@@ -838,7 +949,8 @@
     var folder = ws.current ? dirname(ws.current) : "";
     $("mb-ws-new-name").value = folder ? folder + "/" : "";
     $("mb-ws-new-error").textContent = "";
-    $("mb-ws-new-where").textContent = ws.handle ? "Saved into “" + ws.folder + "”" : "This browser downloads it when you save";
+    $("mb-ws-new-where").textContent = ws.handle ? "Saved into “" + ws.folder + "”"
+      : canSaveAs ? "You choose where to save it" : "Downloaded when you save";
     dialog.showModal();
     $("mb-ws-new-name").focus();
   }
@@ -867,11 +979,20 @@
   }
 
   function rememberHandle(handle) {
+    return remember({ name: handle.name, handle: handle, time: Date.now() });
+  }
+
+  function rememberFiles(handles) {
+    var names = handles.map(function (h) { return h.name; });
+    return remember({ name: "files:" + names.join("|"), label: filesLabel(handles), handles: handles, time: Date.now() });
+  }
+
+  function remember(record) {
     if (!canPick) return Promise.resolve();
     return db().then(function (d) {
       return new Promise(function (resolve) {
         var tx = d.transaction("recent", "readwrite");
-        tx.objectStore("recent").put({ name: handle.name, handle: handle, time: Date.now() });
+        tx.objectStore("recent").put(record);
         tx.oncomplete = resolve;
         tx.onerror = resolve;
       });
@@ -894,13 +1015,15 @@
     recentHandles().then(function (items) {
       box.innerHTML = "";
       if (!items.length) return;
-      box.appendChild(el("p", { class: "mb-hint", text: "Recent folders:" }));
+      box.appendChild(el("p", { class: "mb-hint", text: "Recent:" }));
       items.forEach(function (item) {
-        var b = el("button", { type: "button", class: "mb-chip", text: item.name });
+        var handles = item.handles || [item.handle];
+        var b = el("button", { type: "button", class: "mb-chip", text: (item.handles ? "📄 " + item.label : "📁 " + item.name) });
         b.addEventListener("click", function () {
-          item.handle.requestPermission({ mode: "read" }).then(function (state) {
-            if (state === "granted") return openHandle(item.handle);
-            showError(new Error("permission was not given"));
+          Promise.all(handles.map(function (h) { return h.requestPermission({ mode: "read" }); })).then(function (states) {
+            var allowed = handles.filter(function (h, i) { return states[i] === "granted"; });
+            if (!allowed.length) return showError(new Error("permission was not given"));
+            return item.handles ? openFileHandles(allowed) : openHandle(allowed[0]);
           }).catch(showError);
         });
         box.appendChild(b);
@@ -918,9 +1041,23 @@
     if (cfg && cfg.textContent.indexOf("navigation.instant") >= 0) { location.reload(); return; }
     root.dataset.ready = "1";
     $("mb-ws-support").textContent = canPick
-      ? "Your browser keeps the folder open: pages update when you save a file, Edit saves back into the folder, and recent folders are remembered."
-      : "Your browser reads the folder once (a snapshot), and edits are downloaded as .md files. To save into the folder, use Chrome or Edge.";
+      ? "Your browser keeps what you open: pages update when a file changes, Edit saves back to your files, and recent items are remembered."
+      : "Your browser reads what you open once (a snapshot), and edits are downloaded as .md files. To save into your files, use Chrome or Edge.";
     $("mb-ws-open").addEventListener("click", pick);
+    $("mb-ws-open-files").addEventListener("click", pickFiles);
+    $("mb-ws-install").hidden = !installEvent;
+    $("mb-ws-install").addEventListener("click", function () {
+      if (!installEvent) return;
+      installEvent.prompt();
+      installEvent.userChoice.then(function () { installEvent = null; $("mb-ws-install").hidden = true; });
+    });
+    if ("launchQueue" in window) {  // the installed app was opened with .md files ("Open with")
+      window.launchQueue.setConsumer(function (params) {
+        var handles = (params.files || []).filter(function (h) { return h.kind === "file"; });
+        if (handles.length) openFileHandles(handles).catch(showError);
+      });
+    }
+    registerWorker(root.dataset.base || ".");
     $("mb-ws-edit").addEventListener("click", startEdit);
     $("mb-ws-save").addEventListener("click", function () { save(); });
     $("mb-ws-done").addEventListener("click", finishEdit);
@@ -946,6 +1083,43 @@
     showRecent();
     libs().catch(showError);  // start loading the renderer early
   }
+
+  // offline support: sw.js at the site root, told which files this page loaded
+  function registerWorker(base) {
+    if (!("serviceWorker" in navigator) || !window.isSecureContext) return;
+    navigator.serviceWorker.register(base + "/sw.js").then(function () {
+      return Promise.all([navigator.serviceWorker.ready, libs()]);
+    }).then(function (ready) {
+      var urls = [location.href.split("#")[0]].concat(performance.getEntriesByType("resource").map(function (r) { return r.name; }));
+      if (ready[0].active) ready[0].active.postMessage({ type: "cache", urls: urls });
+    }).catch(function () { /* works online without it */ });
+  }
+
+  window.addEventListener("beforeinstallprompt", function (e) {
+    if (!document.getElementById("mb-ws")) return;
+    e.preventDefault();
+    installEvent = e;
+    if ($("mb-ws-install")) $("mb-ws-install").hidden = false;
+  });
+
+  function dragsFiles(e) {
+    return !!document.getElementById("mb-ws") && !!e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], "Files") >= 0;
+  }
+
+  document.addEventListener("dragover", function (e) {
+    if (!dragsFiles(e)) return;
+    e.preventDefault();
+    document.documentElement.classList.add("mb-ws-dropping");
+  });
+  document.addEventListener("dragleave", function (e) {
+    if (!e.relatedTarget) document.documentElement.classList.remove("mb-ws-dropping");
+  });
+  document.addEventListener("drop", function (e) {
+    document.documentElement.classList.remove("mb-ws-dropping");
+    if (!dragsFiles(e)) return;
+    e.preventDefault();
+    openDropped(e.dataTransfer);
+  });
 
   document.addEventListener("keydown", function (e) {
     if (!document.getElementById("mb-ws") || !ws) return;

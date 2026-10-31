@@ -1,7 +1,16 @@
-{#- Workspace: open a folder from this computer and read its .md files in the browser.
-    Use it on any md-beauty site with a page whose front matter is `template: md-beauty-workspace.html`.
-    Files are read (and, after Edit, saved) by the browser only (assets/md-beauty-workspace.js); nothing is uploaded. -#}
+{#- Workspace: open a folder or files from this computer, read and edit them in the browser.
+    Use it on any md-beauty site with a page whose front matter is `template: md-beauty-workspace.html`
+    (optional `heading:` for the big title). The page's own text shows under the buttons.
+    Files are read (and, after Edit, saved) by the browser only (assets/md-beauty-workspace.js); nothing is uploaded.
+    The build adds manifest.webmanifest (hooks.py) and the page registers sw.js, so the site installs as an app. -#}
 {% extends "main.html" %}
+
+{% block extrahead %}
+  {{ super() }}
+  <link rel="manifest" href="{{ base_url }}/manifest.webmanifest">
+  <meta name="theme-color" content="#299a8d">
+  <link rel="apple-touch-icon" href="{{ base_url }}/assets/icon-192.png">
+{% endblock %}
 
 {% block config %}
   {{ super() }}
@@ -42,17 +51,21 @@
 {% endblock %}
 
 {% block content %}
-  <div id="mb-ws" class="mb-ws">
+  <div id="mb-ws" class="mb-ws" data-base="{{ base_url }}">
     <div class="mb-ws-start" id="mb-ws-start">
-      <h1>{{ page.title }}</h1>
-      <p>Open a folder on your computer to read and edit its markdown files in this style.
+      <h1>{{ page.meta.heading or page.title }}</h1>
+      <p>Open a folder or files from your computer to read and edit your markdown in this style.
          <strong>Nothing is uploaded</strong>: your browser reads the files directly.</p>
       <div class="mb-empty-actions">
         <button type="button" class="mb-btn-primary" id="mb-ws-open">Open folder</button>
+        <button type="button" class="mb-btn-secondary" id="mb-ws-open-files">Open files</button>
+        <button type="button" class="mb-btn-text" id="mb-ws-install" hidden>Install as an app</button>
       </div>
+      <p class="mb-hint">Or drop .md files or a folder anywhere on this page.</p>
       <p class="mb-hint" id="mb-ws-support"></p>
       <div class="mb-ws-recent" id="mb-ws-recent"></div>
       <noscript><p>The workspace needs JavaScript.</p></noscript>
+      {% if page.content %}<div class="mb-ws-intro">{{ page.content }}</div>{% endif %}
     </div>
     <div class="mb-ws-page" id="mb-ws-page" hidden>
       <div class="mb-ws-pagebar">

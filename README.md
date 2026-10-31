@@ -1,14 +1,15 @@
 # md-beauty
 
-**Turn your markdown notes into a clean, readable website with one command.**
+**Read and edit your markdown files in a clean, readable style.**
 
-Point it at one `.md` file, a few files, or a whole folder. You get a site with a sidebar, search, dark mode, colored callouts and a "mark as read" toggle. Your files stay plain GitHub markdown: no front matter and no special syntax.
+Open a `.md` file, a few files, or a whole folder. You get a sidebar, search, dark mode, colored callouts and a "mark as read" toggle. Your files stay plain GitHub markdown: no front matter and no special syntax.
 
-**[See the live demo →](https://engmhmoud.github.io/md-beauty/)**
+- **In your browser, nothing to install:** **[open the md-beauty workspace →](https://engmhmoud.github.io/md-beauty/)**. Nothing is uploaded. In Chrome or Edge you can install it as an app.
+- **For developers:** a command line tool that turns a folder of notes into a website (below).
 
 ![md-beauty light mode](docs/screenshot-light.png)
 
-## Quick start
+## Command line: your notes as a website
 
 **With Docker (nothing to install):**
 
@@ -76,34 +77,38 @@ While `md-beauty serve` runs, the **folder** button in the header (or the `o` ke
 
 With Docker, md-beauty only sees what you mount. Mount a parent folder to switch between its subfolders, for example `-v "$HOME/notes":/docs` and then `md-beauty serve project-a`.
 
-## Workspace: read and edit a folder from your computer, in the browser
+## Workspace: read and edit files from your computer, in the browser
 
-The live demo has a **[Workspace](https://engmhmoud.github.io/md-beauty/workspace/)** page. Click **Open folder**, pick a folder on your computer, and read its `.md` files in this style. There's nothing to install, and **nothing is uploaded**: your browser reads the files directly.
+The **[live demo's home page](https://engmhmoud.github.io/md-beauty/)** is the workspace. Click **Open folder** or **Open files**, or drop `.md` files or a folder anywhere on the page. There's nothing to install, and **nothing is uploaded**: your browser reads the files directly.
 
 | | Chrome / Edge | Firefox / Safari |
 |---|---|---|
-| Open a folder | Yes | Yes (read once, as a snapshot) |
-| Page updates when you save a file | Yes (new and removed files too) | Reload: pick the folder again |
-| Recent folders | Yes | No |
-| **Edit** and **+ New page** | Save writes into the folder | Save downloads the `.md` file |
+| Open a folder, open files, drop them | Yes | Yes (read once, as a snapshot) |
+| Page updates when a file changes | Yes (new and removed files too) | Reload: pick them again |
+| Recent folders and files | Yes | No |
+| **Edit** and **+ New page** | Save writes back to your files | Save downloads the `.md` file |
+| Install as an app | Yes: works offline, and `.md` files get **Open with → md-beauty** | No |
 
-The sidebar shows the folder's files and subfolders, with a filter box. Links between pages, images, callouts, tags and `.md-beauty.yml` (title, order, section names, exclude) all work.
+The sidebar shows the folder's files and subfolders, with a filter box. Links between pages, images, callouts, tags and `.md-beauty.yml` (title, order, section names, exclude) all work. When you open single files, links between them work too; the same name twice shows as `notes (2).md`.
+
+**Install as an app (Chrome / Edge).** Click **Install as an app** on the workspace, or the install icon in the address bar. md-beauty then opens in its own window, works offline, and appears in your computer's **Open with** menu for `.md` and `.markdown` files.
 
 **Editing.** Click **Edit** on a page (or press `e`) to see the markdown on the left and a live preview on the right. **Hide preview** gives the text the full width; **Show preview** brings it back. Save with the button or `Ctrl+S`; **Done** goes back to reading.
 
 - The first save asks the browser for permission to write to the folder (the folder is opened read-only until then).
 - Unsaved edits are kept when you switch pages, and a dot marks those pages in the sidebar. Closing the tab warns you.
 - Nothing is overwritten silently: if the file changed on disk after you started editing, Save asks whether to keep your version or load the one on disk.
-- **+ New page** creates a new `.md` file (use `/` for folders, for example `guide/caching`) and never replaces an existing file: it adds `-2`, `-3`, … instead.
+- **+ New page** creates a new `.md` file (use `/` for folders, for example `guide/caching`) and never replaces an existing file: it adds `-2`, `-3`, … instead. With single files open (no folder), Save asks where to put it.
 
-The workspace renders markdown with [markdown-it](https://github.com/markdown-it/markdown-it) and cleans the HTML with [DOMPurify](https://github.com/cure53/DOMPurify), so a file's scripts never run. It adds the same md-beauty extras on top. Both libraries load from jsDelivr, pinned to exact versions.
+The workspace renders markdown with [markdown-it](https://github.com/markdown-it/markdown-it) and cleans the HTML with [DOMPurify](https://github.com/cure53/DOMPurify), so a file's scripts never run, and reads `.md-beauty.yml` with [js-yaml](https://github.com/nodeca/js-yaml). It adds the same md-beauty extras on top. The three libraries ship with the theme (`theme/assets/vendor/`, each with its license header), so nothing loads from other sites.
 
-To add a workspace page to your own md-beauty site, create a page with this front matter:
+To add a workspace page to your own md-beauty site, create a page with this front matter. Its text shows under the buttons, and the build adds the app manifest and offline support:
 
 ```markdown
 ---
 template: md-beauty-workspace.html
 title: Workspace
+heading: Read and edit your markdown   # optional big title
 ---
 ```
 
@@ -165,7 +170,7 @@ docker build -t md-beauty . && docker run --rm -p 127.0.0.1:8000:8000 -v "$PWD/e
 md-beauty generates a [MkDocs](https://www.mkdocs.org/) config on the fly and runs it with [Material for MkDocs](https://squidfunk.github.io/mkdocs-material/), plus:
 
 - `src/md_beauty/hooks.py`: markdown fixes, callouts, tags, sidebar names
-- `src/md_beauty/theme/`: the CSS (Open Sans, teal accent, light and dark) and the "mark as read" script
+- `src/md_beauty/theme/`: the CSS (Open Sans, teal accent, light and dark), the reading controls, and the workspace (`md-beauty-workspace.js`, `sw.js` for offline use)
 
 Run the tests with `pip install -e ".[test]" && pytest`.
 

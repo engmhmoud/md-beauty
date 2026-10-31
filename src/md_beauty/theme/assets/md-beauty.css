@@ -515,3 +515,14 @@ body { background: var(--mb-paper); }
   .mb-ws-split { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
   .mb-ws-split.mb-ws-nopreview { grid-template-rows: minmax(0, 1fr); }
 }
+
+/* workspace start screen: the page's own text under the buttons, and the drop overlay */
+.mb-ws-intro { text-align: left; max-width: 42em; margin: 3em auto 0; padding-top: 1.5em; border-top: 1px solid var(--mb-divider); }
+.mb-ws-dropping body::after {
+  content: "Drop to open"; position: fixed; inset: .6rem; z-index: 20; pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
+  border: 3px dashed var(--mb-primary); border-radius: 16px;
+  background: color-mix(in srgb, var(--mb-paper) 85%, transparent);
+  font: 700 1.2rem var(--md-text-font-family), sans-serif; color: var(--mb-primary-dark);
+}
+.mb-ws-nav [hidden], #mb-ws-toc-title[hidden] { display: none; }

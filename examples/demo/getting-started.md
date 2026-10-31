@@ -2,9 +2,27 @@
 
 This site is the live demo of [md-beauty](https://github.com/engmhmoud/md-beauty). It was built from plain markdown files in [`examples/demo`](https://github.com/engmhmoud/md-beauty/tree/main/examples/demo) with one command.
 
-## Install
+## In your browser: nothing to install
 
-**With Docker (nothing to install):**
+On the **[Workspace](README.md)** (this site's home page):
+
+- **Open folder** or **Open files**, or drop `.md` files or a folder anywhere on the page. Your markdown shows up in this style. Nothing is uploaded; your browser reads the files directly.
+- **Edit** (or press `e`) shows the markdown on the left and a live preview on the right. **Hide preview** gives the text the full width. Save with `Ctrl+S`.
+- **+ New page** creates a new `.md` file.
+
+| | Chrome / Edge | Firefox / Safari |
+|---|---|---|
+| Open a folder, open files, drop them | Yes | Yes (a snapshot: pick them again to see changes) |
+| Pages update when a file changes | Yes | No |
+| Save | Writes back to your files | Downloads the `.md` file |
+| Recent folders and files | Yes | No |
+| Install as an app (works offline, **Open with → md-beauty** for `.md` files) | Yes | No |
+
+## Publish your notes as a website
+
+For developers who want their own site, like this one, there's a command line tool.
+
+**With Docker:**
 
 ```bash
 docker build -t md-beauty https://github.com/engmhmoud/md-beauty.git
@@ -20,8 +38,6 @@ md-beauty serve notes/
 
 Open http://127.0.0.1:8000. Saving a file reloads the page.
 
-## Commands
-
 | Command | What it does |
 |---|---|
 | `md-beauty serve` | Empty workspace: add or paste pages in the browser (**+** button, drop files, or `Ctrl+V`) |
@@ -30,12 +46,6 @@ Open http://127.0.0.1:8000. Saving a file reloads the page.
 | `md-beauty serve intro.md setup.md` | Only these files |
 | `md-beauty build notes/ -o site` | Static HTML, ready for GitHub Pages or any web server |
 | `md-beauty serve . --port 8080` | Another port (with Docker: `-p 127.0.0.1:8080:8000`). Without `--port`, a busy 8000 moves to the next free port |
-
-## Read and edit your own folder here
-
-Open the **[Workspace](workspace.md)** page, click **Open folder** and pick a folder on your computer. Your `.md` files show up in this style. Nothing is uploaded; your browser reads them directly.
-
-Click **Edit** (or press `e`) to change a page: markdown on the left, live preview on the right. **Hide preview** gives the text the full width. Save with `Ctrl+S`. In Chrome and Edge, Save writes into your folder; in other browsers it downloads the `.md` file. **+ New page** creates a new file.
 
 ## Reading controls
 

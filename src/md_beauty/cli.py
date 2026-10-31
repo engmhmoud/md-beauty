@@ -71,7 +71,7 @@ def _title(docs_dir, include, options, cli_title):
 def write_config(paths, title=None, site_url=None, extra_exclude=(), edit=False, serving=False):
     docs_dir, include = _resolve(paths)
     options = _load_options(docs_dir)
-    exclude = ["*", *[f"!{p}" for p in include], *[f"!{p}" for p in IMAGES], "!/assets/**",
+    exclude = ["*", *[f"!{p}" for p in include], *[f"!{p}" for p in IMAGES], "!/assets/**", "!/sw.js",
                *ALWAYS_EXCLUDED, *(options.get("exclude") or []), *extra_exclude]
     theme = os.path.join(HERE, "theme")
     config = {
