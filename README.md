@@ -76,7 +76,7 @@ While `md-beauty serve` runs, the **folder** button in the header (or the `o` ke
 
 With Docker, md-beauty only sees what you mount. Mount a parent folder to switch between its subfolders, for example `-v "$HOME/notes":/docs` and then `md-beauty serve project-a`.
 
-## Workspace: read a folder from your computer, in the browser
+## Workspace: read and edit a folder from your computer, in the browser
 
 The live demo has a **[Workspace](https://engmhmoud.github.io/md-beauty/workspace/)** page. Click **Open folder**, pick a folder on your computer, and read its `.md` files in this style. There's nothing to install, and **nothing is uploaded**: your browser reads the files directly.
 
@@ -85,8 +85,16 @@ The live demo has a **[Workspace](https://engmhmoud.github.io/md-beauty/workspac
 | Open a folder | Yes | Yes (read once, as a snapshot) |
 | Page updates when you save a file | Yes (new and removed files too) | Reload: pick the folder again |
 | Recent folders | Yes | No |
+| **Edit** and **+ New page** | Save writes into the folder | Save downloads the `.md` file |
 
 The sidebar shows the folder's files and subfolders, with a filter box. Links between pages, images, callouts, tags and `.md-beauty.yml` (title, order, section names, exclude) all work.
+
+**Editing.** Click **Edit** on a page (or press `e`) to see the markdown on the left and a live preview on the right. **Hide preview** gives the text the full width; **Show preview** brings it back. Save with the button or `Ctrl+S`; **Done** goes back to reading.
+
+- The first save asks the browser for permission to write to the folder (the folder is opened read-only until then).
+- Unsaved edits are kept when you switch pages, and a dot marks those pages in the sidebar. Closing the tab warns you.
+- Nothing is overwritten silently: if the file changed on disk after you started editing, Save asks whether to keep your version or load the one on disk.
+- **+ New page** creates a new `.md` file (use `/` for folders, for example `guide/caching`) and never replaces an existing file: it adds `-2`, `-3`, … instead.
 
 The workspace renders markdown with [markdown-it](https://github.com/markdown-it/markdown-it) and cleans the HTML with [DOMPurify](https://github.com/cure53/DOMPurify), so a file's scripts never run. It adds the same md-beauty extras on top. Both libraries load from jsDelivr, pinned to exact versions.
 

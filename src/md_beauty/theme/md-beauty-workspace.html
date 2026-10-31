@@ -1,6 +1,6 @@
 {#- Workspace: open a folder from this computer and read its .md files in the browser.
     Use it on any md-beauty site with a page whose front matter is `template: md-beauty-workspace.html`.
-    Files are read by the browser only (assets/md-beauty-workspace.js); nothing is uploaded. -#}
+    Files are read (and, after Edit, saved) by the browser only (assets/md-beauty-workspace.js); nothing is uploaded. -#}
 {% extends "main.html" %}
 
 {% block config %}
@@ -45,7 +45,7 @@
   <div id="mb-ws" class="mb-ws">
     <div class="mb-ws-start" id="mb-ws-start">
       <h1>{{ page.title }}</h1>
-      <p>Open a folder on your computer and read its markdown files in this style.
+      <p>Open a folder on your computer to read and edit its markdown files in this style.
          <strong>Nothing is uploaded</strong>: your browser reads the files directly.</p>
       <div class="mb-empty-actions">
         <button type="button" class="mb-btn-primary" id="mb-ws-open">Open folder</button>
@@ -55,8 +55,38 @@
       <noscript><p>The workspace needs JavaScript.</p></noscript>
     </div>
     <div class="mb-ws-page" id="mb-ws-page" hidden>
-      <div class="mb-eyebrow" id="mb-ws-eyebrow"></div>
+      <div class="mb-ws-pagebar">
+        <div class="mb-eyebrow" id="mb-ws-eyebrow"></div>
+        <button type="button" class="mb-chip mb-ws-edit" id="mb-ws-edit" title="Edit this page (e)">Edit</button>
+      </div>
       <div id="mb-ws-article"></div>
     </div>
+    <div class="mb-ws-editor" id="mb-ws-editor" hidden>
+      <div class="mb-ws-editbar">
+        <code class="mb-ws-editpath" id="mb-ws-editpath"></code>
+        <span class="mb-hint mb-ws-editstate" id="mb-ws-editstate"></span>
+        <button type="button" class="mb-chip" id="mb-ws-preview-toggle" aria-pressed="true">Hide preview</button>
+        <button type="button" class="mb-btn-primary" id="mb-ws-save" title="Ctrl+S">Save</button>
+        <button type="button" class="mb-btn-text" id="mb-ws-done">Done</button>
+      </div>
+      <div class="mb-ws-notice" id="mb-ws-notice" role="status" hidden></div>
+      <div class="mb-ws-split" id="mb-ws-split">
+        <textarea class="mb-ws-source" id="mb-ws-source" spellcheck="false" aria-label="Markdown"></textarea>
+        <div class="mb-ws-preview" id="mb-ws-preview" aria-label="Preview"></div>
+      </div>
+    </div>
   </div>
+  <dialog class="mb-dialog mb-ws-new" id="mb-ws-new">
+    <form class="mb-form" id="mb-ws-new-form">
+      <h2>New page</h2>
+      <label class="mb-hint" for="mb-ws-new-name">Name. Use / for folders, for example <code>guide/caching</code></label>
+      <input class="mb-input" id="mb-ws-new-name" autocomplete="off" required>
+      <p class="mb-error" id="mb-ws-new-error"></p>
+      <div class="mb-actions">
+        <span class="mb-hint" id="mb-ws-new-where"></span>
+        <button type="button" class="mb-btn-text" id="mb-ws-new-cancel">Cancel</button>
+        <button type="submit" class="mb-btn-primary">Create</button>
+      </div>
+    </form>
+  </dialog>
 {% endblock %}

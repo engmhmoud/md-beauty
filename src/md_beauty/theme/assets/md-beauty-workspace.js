@@ -1,7 +1,7 @@
-// md-beauty workspace: open a folder on this computer and read its .md files in the browser.
+// md-beauty workspace: open a folder on this computer, read and edit its .md files in the browser.
 // Active only on pages built with the md-beauty-workspace.html template. Nothing is uploaded:
-// files are read with the File System Access API (Chrome/Edge: live reload + recent folders)
-// or a folder <input> (other browsers: a read-only snapshot).
+// files are read with the File System Access API (Chrome/Edge: live reload, recent folders, and
+// Save writes back into the folder) or a folder <input> (other browsers: a snapshot; Save downloads).
 (function () {
   "use strict";
 
@@ -27,6 +27,10 @@
   var objectUrls = [];
   var pollTimer = null;
   var md = null;
+  var drafts = {};      // path -> { text, base, baseModified }: pages being edited (kept when you switch pages)
+  var editing = null;   // the path shown in the editor
+  var previewUrls = [];
+  var previewTimer = null;
 
   // ------------------------------------------------------------------ small helpers
 
@@ -256,6 +260,7 @@
   function markActive(current) {
     document.querySelectorAll("#mb-ws-tree a.md-nav__link").forEach(function (a) {
       a.classList.toggle("md-nav__link--active", a.getAttribute("data-path") === current);
+      a.classList.toggle("mb-ws-dirty", isDirty(a.getAttribute("data-path")));
     });
   }
 
@@ -265,11 +270,13 @@
     bar.innerHTML = "";
     var reload = el("button", { type: "button", class: "mb-chip", title: "Read the folder again", text: "Reload" });
     var other = el("button", { type: "button", class: "mb-chip", title: "Open another folder", text: "Open…" });
+    var add = el("button", { type: "button", class: "mb-chip mb-ws-add", title: "Create a new .md file", text: "+ New page" });
     reload.addEventListener("click", function () { reopen(); });
     other.addEventListener("click", function () { pick(); });
+    add.addEventListener("click", newPageDialog);
     bar.appendChild(el("strong", { text: ws.folder }));
     bar.appendChild(el("span", { class: "mb-hint", text: count + (count === 1 ? " page" : " pages") + (ws.live ? " · live" : " · snapshot") }));
-    bar.appendChild(el("div", { class: "mb-ws-folder-actions" }, [ws.live || ws.handle ? reload : null, other]));
+    bar.appendChild(el("div", { class: "mb-ws-folder-actions" }, [add, ws.live || ws.handle ? reload : null, other]));
     $("mb-ws-search").hidden = false;
   }
 
@@ -284,7 +291,7 @@
 
   function route(path, anchor) { return "#/" + encodeURI(path) + (anchor ? "#" + anchor : ""); }
 
-  function decorate(article, path) {
+  function decorate(article, path, urls) {
     var used = {};
     article.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach(function (h) {
       var id = slug(h.textContent) || "section", n = used[id] || 0;
@@ -348,7 +355,7 @@
       if (!entry) return;
       images.push(getFile(entry).then(function (f) {
         var url = URL.createObjectURL(f);
-        objectUrls.push(url);
+        (urls || objectUrls).push(url);
         img.src = url;
       }));
     });
@@ -374,21 +381,31 @@
     $("mb-ws-toc-title").hidden = !toc.children.length;
   }
 
+  function toHtml(text) {
+    return window.DOMPurify.sanitize(md.render(text), { ADD_ATTR: ["target", "open"] });
+  }
+
   function render(path, anchor, keepScroll) {
     var page = ws.pages[path];
     if (!page) return;
+    var parent = dirname(path);
+    $("mb-ws-eyebrow").textContent = parent ? folderTitle(findDir(parent)) : "";
+    $("mb-ws-start").hidden = true;
+    document.title = plainTitle(page.title) + " - " + ws.name;
+    ws.current = path;
+    try { localStorage.setItem("md-beauty-ws-last:" + ws.folder, path); } catch (e) { /* private mode */ }
+    if (drafts[path]) {  // this page is being edited: show the editor, not the page
+      showEditor(path);
+      markActive(path);
+      return Promise.resolve();
+    }
+    hideEditor();
     objectUrls.forEach(URL.revokeObjectURL);
     objectUrls = [];
     var article = $("mb-ws-article");
     var scroll = window.scrollY;
-    article.innerHTML = window.DOMPurify.sanitize(md.render(page.text), { ADD_ATTR: ["target", "open"] });
-    var parent = dirname(path);
-    $("mb-ws-eyebrow").textContent = parent ? folderTitle(findDir(parent)) : "";
-    $("mb-ws-start").hidden = true;
+    article.innerHTML = toHtml(page.text);
     $("mb-ws-page").hidden = false;
-    document.title = plainTitle(page.title) + " - " + ws.name;
-    ws.current = path;
-    try { localStorage.setItem("md-beauty-ws-last:" + ws.folder, path); } catch (e) { /* private mode */ }
     return decorate(article, path).then(function () {
       showToc(article, path);
       markActive(path);
@@ -446,9 +463,10 @@
     if (!Object.keys(ws.pages).length) {
       showFolderBar();
       $("mb-ws-tree").innerHTML = "";
+      hideEditor();
       $("mb-ws-start").hidden = false;
       $("mb-ws-page").hidden = true;
-      $("mb-ws-support").textContent = "No .md files in “" + ws.folder + "”. Pick another folder.";
+      $("mb-ws-support").textContent = "No .md files in “" + ws.folder + "”. Create one with “+ New page”, or pick another folder.";
       return;
     }
     showFolderBar();
@@ -458,7 +476,9 @@
     startPolling();
   }
 
-  function openHandle(handle) {
+  // keepDrafts: the same folder read again (Reload, or files added or removed on disk)
+  function openHandle(handle, keepDrafts) {
+    if (!keepDrafts) drafts = {};
     return libs().then(function () {
       return walkHandle(handle, "", []);
     }).then(function (entries) {
@@ -470,6 +490,7 @@
   }
 
   function pick() {
+    if (hasDirty() && !window.confirm("Your unsaved edits will be lost. Open another folder?")) return;
     if (canPick) {
       return window.showDirectoryPicker({ id: "md-beauty-workspace", mode: "read" }).then(openHandle).catch(function (err) {
         if (err.name !== "AbortError") showError(err);
@@ -479,6 +500,7 @@
     input.addEventListener("change", function () {
       if (!input.files.length) return;
       var name = (input.files[0].webkitRelativePath || "folder").split("/")[0];
+      drafts = {};
       libs().then(function () { return load(name, fromFileList(input.files), false); })
         .then(function () { opened(ws, null); }).catch(showError);
     });
@@ -488,7 +510,7 @@
   function reopen() {
     if (ws && ws.handle) {
       var keep = ws.current;
-      return openHandle(ws.handle).then(function () { if (keep && ws.pages[keep]) render(keep, null, true); });
+      return openHandle(ws.handle, true).then(function () { if (keep && ws.pages[keep]) render(keep, null, true); });
     }
     return pick();
   }
@@ -515,6 +537,7 @@
         return;
       }
       getFile(page.entry).then(function (f) {
+        if (drafts[page.path]) return followDraft(page, f);
         if (f.lastModified === page.modified) return;
         return f.text().then(function (text) {
           page.text = text;
@@ -524,6 +547,312 @@
         });
       }).catch(function () { /* file removed: the folder check above will notice */ });
     }, 1500);
+  }
+
+  // ------------------------------------------------------------------ editing
+
+  function isDirty(path) { var d = drafts[path]; return !!d && d.text !== d.base; }
+  function hasDirty() { return Object.keys(drafts).some(isDirty); }
+
+  // Save writes into the folder only with a folder handle (Chrome/Edge); otherwise it downloads the file
+  function canWrite(page) { return !!(ws && ws.handle && page && page.entry && page.entry.handle); }
+
+  // the folder is opened read-only; ask for write access the first time it's needed (during a click)
+  function askWrite() {
+    var h = ws.handle;
+    if (!h.queryPermission) return Promise.resolve("granted");
+    return h.queryPermission({ mode: "readwrite" }).then(function (state) {
+      return state === "granted" ? state : h.requestPermission({ mode: "readwrite" });
+    });
+  }
+
+  function previewOn() {
+    try { return localStorage.getItem("md-beauty-ws-preview") !== "off"; } catch (e) { return true; }
+  }
+
+  function setPreview(on) {
+    try { localStorage.setItem("md-beauty-ws-preview", on ? "on" : "off"); } catch (e) { /* private mode */ }
+    var toggle = $("mb-ws-preview-toggle");
+    toggle.setAttribute("aria-pressed", String(on));
+    toggle.textContent = on ? "Hide preview" : "Show preview";
+    $("mb-ws-split").classList.toggle("mb-ws-nopreview", !on);
+    $("mb-ws-preview").hidden = !on;
+    if (on) updatePreview();
+  }
+
+  function updatePreview() {
+    if (!editing || !previewOn()) return;
+    var box = $("mb-ws-preview");
+    var top = box.scrollTop;
+    previewUrls.forEach(URL.revokeObjectURL);
+    previewUrls = [];
+    box.innerHTML = toHtml(drafts[editing].text);
+    decorate(box, editing, previewUrls).then(function () { box.scrollTop = top; });
+  }
+
+  function showState(message) {
+    var dirty = isDirty(editing);
+    $("mb-ws-editstate").textContent = dirty ? "Unsaved changes" : (message || "");
+    var write = canWrite(ws.pages[editing]);
+    var save = $("mb-ws-save");
+    save.textContent = write ? "Save" : "Download";
+    save.title = write ? "Save into the folder (Ctrl+S)" : "This browser can't write to the folder: download the .md file (Ctrl+S)";
+    save.disabled = write && !dirty;
+    markActive(editing);
+  }
+
+  function notice(message, actions) {
+    var box = $("mb-ws-notice");
+    box.innerHTML = "";
+    box.hidden = !message;
+    if (!message) return;
+    box.appendChild(el("span", { text: message }));
+    (actions || []).forEach(function (action) {
+      var b = el("button", { type: "button", class: "mb-chip", text: action[0] });
+      b.addEventListener("click", function () { notice(null); action[1](); });
+      box.appendChild(b);
+    });
+  }
+
+  function showEditor(path) {
+    var d = drafts[path];
+    var source = $("mb-ws-source");
+    var fresh = source.dataset.path !== path;
+    editing = path;
+    document.documentElement.classList.add("mb-ws-editing");
+    $("mb-ws-page").hidden = true;
+    $("mb-ws-editor").hidden = false;
+    $("mb-ws-editpath").textContent = path;
+    $("mb-ws-toc").innerHTML = "";
+    $("mb-ws-toc-title").hidden = true;
+    if (source.value !== d.text) source.value = d.text;
+    if (fresh) {
+      source.dataset.path = path;
+      source.scrollTop = 0;
+      $("mb-ws-preview").scrollTop = 0;
+      notice(null);
+      source.focus();
+    }
+    setPreview(previewOn());
+    showState();
+  }
+
+  function hideEditor() {
+    if (!editing) return;
+    editing = null;
+    $("mb-ws-source").dataset.path = "";
+    document.documentElement.classList.remove("mb-ws-editing");
+    $("mb-ws-editor").hidden = true;
+    previewUrls.forEach(URL.revokeObjectURL);
+    previewUrls = [];
+  }
+
+  function startEdit() {
+    if (!ws || !ws.current || editing) return;
+    var page = ws.pages[ws.current];
+    drafts[page.path] = { text: page.text, base: page.text, baseModified: page.modified };
+    if (canWrite(page)) askWrite().catch(function () { /* asked again on Save */ });
+    render(page.path);
+  }
+
+  function finishEdit() {
+    var path = editing;
+    if (isDirty(path)) {
+      notice("You have unsaved changes.", [
+        [canWrite(ws.pages[path]) ? "Save and close" : "Download and close", function () { save().then(function (ok) { if (ok) finishEdit(); }); }],
+        ["Discard changes", function () { delete drafts[path]; render(path); }]
+      ]);
+      return;
+    }
+    delete drafts[path];
+    render(path);
+  }
+
+  function download(path, text) {
+    var url = URL.createObjectURL(new Blob([text], { type: "text/markdown" }));
+    var a = el("a", { href: url, download: basename(path) });
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  // the page now holds `text` (saved or downloaded): the reading view and sidebar follow it
+  function adopt(path, text, modified) {
+    var page = ws.pages[path], d = drafts[path];
+    var title = (ws.options.pages || {})[path] || firstHeading(text) || page.title;
+    page.text = text;
+    if (modified) page.modified = modified;
+    if (d) { d.base = text; if (modified) d.baseModified = modified; }
+    if (title !== page.title) { page.title = title; showTree(path); }
+  }
+
+  function write(path) {
+    var page = ws.pages[path], text = drafts[path].text;
+    return page.entry.handle.createWritable().then(function (w) {
+      return w.write(text).then(function () { return w.close(); });
+    }).then(function () {
+      return page.entry.handle.getFile();
+    }).then(function (f) {
+      adopt(path, text, f.lastModified);
+      if (editing === path) showState("Saved");
+      return true;
+    });
+  }
+
+  // resolves true once the text is safely stored (or downloaded)
+  function save() {
+    var path = editing, d = drafts[path], page = ws.pages[path];
+    if (!path) return Promise.resolve(false);
+    if (!canWrite(page)) {
+      download(path, d.text);
+      adopt(path, d.text);
+      showState("Downloaded " + basename(path));
+      return Promise.resolve(true);
+    }
+    return askWrite().then(function (state) {
+      if (state !== "granted") {
+        notice("The browser did not allow saving into this folder.", [["Download a copy", function () { download(path, d.text); }]]);
+        return false;
+      }
+      return page.entry.handle.getFile().then(function (f) {
+        if (f.lastModified === d.baseModified) return write(path);
+        return f.text().then(function (disk) {
+          if (disk === d.base) return write(path);
+          notice("This file changed on disk after you started editing.", [
+            ["Save mine over it", function () { write(path).catch(function (err) { notice("Could not save: " + err.message); }); }],
+            ["Load the disk version", function () { loadDisk(path, disk, f.lastModified); }]
+          ]);
+          return false;
+        });
+      }, function () {
+        return write(path);  // the file was removed on disk: saving puts it back
+      });
+    }).catch(function (err) {
+      notice("Could not save: " + (err && err.message ? err.message : err));
+      return false;
+    });
+  }
+
+  function loadDisk(path, text, modified) {
+    var d = drafts[path];
+    d.text = d.base = text;
+    d.baseModified = modified;
+    adopt(path, text, modified);
+    if (editing === path) {
+      $("mb-ws-source").value = text;
+      updatePreview();
+      showState();
+    }
+  }
+
+  // polling while a page is being edited: follow the file if nothing was typed yet, else warn once
+  function followDraft(page, f) {
+    var d = drafts[page.path];
+    if (f.lastModified === d.baseModified || d.warned === f.lastModified) return;
+    return f.text().then(function (text) {
+      if (text === d.base) { d.baseModified = f.lastModified; return; }
+      if (!isDirty(page.path)) { loadDisk(page.path, text, f.lastModified); return; }
+      d.warned = f.lastModified;
+      if (editing === page.path) notice("This file changed on disk while you were editing. Save will ask which version to keep.");
+    });
+  }
+
+  // ------------------------------------------------------------------ new pages
+
+  function slugPart(text) {
+    return text.toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, "").replace(/[\s_-]+/g, "-").replace(/^-+|-+$/g, "");
+  }
+
+  // "Guide/My Page" -> "guide/my-page.md", like md-beauty serve's page names
+  function cleanName(raw) {
+    var parts = raw.trim().replace(/\\/g, "/").split("/").map(function (p) { return p.trim(); })
+      .filter(function (p) { return p && p !== "."; });
+    if (!parts.length) throw new Error("Give the page a name.");
+    parts.forEach(function (p) {
+      if (p === ".." || p.charAt(0) === ".") throw new Error("Not allowed in a page name: " + p);
+    });
+    var last = parts.pop().replace(MD_RE, "");
+    return parts.map(function (p) { return slugPart(p) || "folder"; }).concat([(slugPart(last) || "untitled") + ".md"]).join("/");
+  }
+
+  function titleFrom(raw) {
+    var last = raw.trim().replace(/\\/g, "/").split("/").pop().replace(MD_RE, "").trim();
+    return last || "Untitled";
+  }
+
+  function dirHandle(path) {
+    return path.split("/").filter(Boolean).reduce(function (job, part) {
+      return job.then(function (dir) { return dir.getDirectoryHandle(part, { create: true }); });
+    }, Promise.resolve(ws.handle));
+  }
+
+  // never overwrite: page.md, page-2.md, page-3.md ... (checks the disk, not just the pages shown)
+  function freeName(dir, name, n) {
+    var candidate = n > 1 ? name.replace(/\.md$/, "-" + n + ".md") : name;
+    return dir.getFileHandle(candidate).then(function () {
+      return freeName(dir, name, n + 1);
+    }, function (err) {
+      if (err.name === "NotFoundError") return candidate;
+      if (err.name === "TypeMismatchError") return freeName(dir, name, n + 1);  // a folder has that name
+      throw err;
+    });
+  }
+
+  function createPage(rel, text) {
+    var folder = dirname(rel);
+    var made;
+    if (ws.handle) {
+      made = askWrite().then(function (state) {
+        if (state !== "granted") throw new Error("The browser did not allow writing to this folder.");
+        return dirHandle(folder);
+      }).then(function (dir) {
+        return freeName(dir, basename(rel), 1).then(function (name) { return dir.getFileHandle(name, { create: true }); });
+      }).then(function (handle) {
+        return handle.createWritable().then(function (w) {
+          return w.write(text).then(function () { return w.close(); });
+        }).then(function () { return handle.getFile(); }).then(function (f) {
+          var path = (folder ? folder + "/" : "") + handle.name;
+          return { path: path, entry: { path: path, handle: handle }, modified: f.lastModified, base: text };
+        });
+      });
+    } else {  // snapshot: the page lives in this tab until it's downloaded
+      var path = rel, n = 1;
+      while (ws.pages[path]) { n += 1; path = rel.replace(/\.md$/, "-" + n + ".md"); }
+      made = Promise.resolve({ path: path, entry: { path: path, file: new File([text], basename(path)) }, modified: Date.now(), base: "" });
+    }
+    return made.then(function (p) {
+      ws.pages[p.path] = { path: p.path, entry: p.entry, text: p.base, modified: p.modified, title: firstHeading(text) || basename(p.path) };
+      drafts[p.path] = { text: text, base: p.base, baseModified: p.modified };
+      ws.tree = buildTree();
+      showFolderBar();
+      location.hash = route(p.path);  // hashchange opens it in the editor
+      showTree(p.path);
+      startPolling();
+      return p.path;
+    });
+  }
+
+  function newPageDialog() {
+    var dialog = $("mb-ws-new");
+    var folder = ws.current ? dirname(ws.current) : "";
+    $("mb-ws-new-name").value = folder ? folder + "/" : "";
+    $("mb-ws-new-error").textContent = "";
+    $("mb-ws-new-where").textContent = ws.handle ? "Saved into “" + ws.folder + "”" : "This browser downloads it when you save";
+    dialog.showModal();
+    $("mb-ws-new-name").focus();
+  }
+
+  function submitNewPage(e) {
+    e.preventDefault();
+    var raw = $("mb-ws-new-name").value;
+    var rel;
+    try { rel = cleanName(raw); } catch (err) { $("mb-ws-new-error").textContent = err.message; return; }
+    createPage(rel, "# " + titleFrom(raw) + "\n\n").then(function () {
+      $("mb-ws-new").close();
+    }).catch(function (err) {
+      $("mb-ws-new-error").textContent = "Could not create the page: " + (err && err.message ? err.message : err);
+    });
   }
 
   // ------------------------------------------------------------------ recent folders (IndexedDB keeps the handles)
@@ -589,9 +918,25 @@
     if (cfg && cfg.textContent.indexOf("navigation.instant") >= 0) { location.reload(); return; }
     root.dataset.ready = "1";
     $("mb-ws-support").textContent = canPick
-      ? "Your browser keeps the folder open: pages update when you save a file, and recent folders are remembered."
-      : "Your browser reads the folder once (a snapshot). For live updates and recent folders, use Chrome or Edge.";
+      ? "Your browser keeps the folder open: pages update when you save a file, Edit saves back into the folder, and recent folders are remembered."
+      : "Your browser reads the folder once (a snapshot), and edits are downloaded as .md files. To save into the folder, use Chrome or Edge.";
     $("mb-ws-open").addEventListener("click", pick);
+    $("mb-ws-edit").addEventListener("click", startEdit);
+    $("mb-ws-save").addEventListener("click", function () { save(); });
+    $("mb-ws-done").addEventListener("click", finishEdit);
+    $("mb-ws-preview-toggle").addEventListener("click", function () { setPreview(!previewOn()); });
+    $("mb-ws-source").addEventListener("input", function () {
+      drafts[editing].text = this.value;
+      showState();
+      clearTimeout(previewTimer);
+      previewTimer = setTimeout(updatePreview, 150);
+    });
+    $("mb-ws-source").addEventListener("scroll", function () {  // keep the preview near the text you're on
+      var box = $("mb-ws-preview"), range = this.scrollHeight - this.clientHeight;
+      if (range > 0) box.scrollTop = (this.scrollTop / range) * (box.scrollHeight - box.clientHeight);
+    });
+    $("mb-ws-new-form").addEventListener("submit", submitNewPage);
+    $("mb-ws-new-cancel").addEventListener("click", function () { $("mb-ws-new").close(); });
     $("mb-ws-search").addEventListener("input", function () { if (ws) showTree(ws.current); });
     $("mb-ws-search").addEventListener("keydown", function (e) {
       if (e.key !== "Enter") return;
@@ -601,6 +946,22 @@
     showRecent();
     libs().catch(showError);  // start loading the renderer early
   }
+
+  document.addEventListener("keydown", function (e) {
+    if (!document.getElementById("mb-ws") || !ws) return;
+    if (editing && (e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "s") {
+      e.preventDefault();
+      save();
+    } else if (e.key === "e" && !editing && !e.ctrlKey && !e.metaKey && !e.altKey && !window.mdBeauty.typing(e.target) &&
+               !document.querySelector("dialog[open]")) {
+      e.preventDefault();
+      startEdit();
+    }
+  });
+
+  window.addEventListener("beforeunload", function (e) {
+    if (document.getElementById("mb-ws") && hasDirty()) { e.preventDefault(); e.returnValue = ""; }
+  });
 
   window.addEventListener("hashchange", function () {
     if (!document.getElementById("mb-ws")) return;

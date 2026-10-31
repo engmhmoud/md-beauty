@@ -31,9 +31,11 @@ Open http://127.0.0.1:8000. Saving a file reloads the page.
 | `md-beauty build notes/ -o site` | Static HTML, ready for GitHub Pages or any web server |
 | `md-beauty serve . --port 8080` | Another port (with Docker: `-p 127.0.0.1:8080:8000`). Without `--port`, a busy 8000 moves to the next free port |
 
-## Read your own folder here
+## Read and edit your own folder here
 
 Open the **[Workspace](workspace.md)** page, click **Open folder** and pick a folder on your computer. Your `.md` files show up in this style. Nothing is uploaded; your browser reads them directly.
+
+Click **Edit** (or press `e`) to change a page: markdown on the left, live preview on the right. **Hide preview** gives the text the full width. Save with `Ctrl+S`. In Chrome and Edge, Save writes into your folder; in other browsers it downloads the `.md` file. **+ New page** creates a new file.
 
 ## Reading controls
 
