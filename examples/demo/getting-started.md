@@ -18,6 +18,8 @@ On the **[Workspace](README.md)** (this site's home page):
 | Recent folders and files | Yes | No |
 | Install as an app (works offline, **Open with → md-beauty** for `.md` files) | Yes | No |
 
+**Browser extension (Chrome / Edge):** the same workspace from a toolbar button, and `.md` files you open in a tab show in this style. See the [README](https://github.com/engmhmoud/md-beauty#browser-extension-chrome--edge) to install it.
+
 ## Publish your notes as a website
 
 For developers who want their own site, like this one, there's a command line tool.

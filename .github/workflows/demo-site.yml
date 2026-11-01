@@ -25,6 +25,11 @@ jobs:
           python-version: "3.13"
       - run: pip install ".[test]"
       - run: pytest -q
+      - run: python extension/build.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: md-beauty-extension
+          path: extension/dist
       - uses: actions/configure-pages@v5
         id: pages
       - run: md-beauty build examples/demo -o site --site-url "${{ steps.pages.outputs.base_url }}/"

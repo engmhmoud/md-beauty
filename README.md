@@ -5,6 +5,7 @@
 Open a `.md` file, a few files, or a whole folder. You get a sidebar, search, dark mode, colored callouts and a "mark as read" toggle. Your files stay plain GitHub markdown: no front matter and no special syntax.
 
 - **In your browser, nothing to install:** **[open the md-beauty workspace →](https://engmhmoud.github.io/md-beauty/)**. Nothing is uploaded. In Chrome or Edge you can install it as an app.
+- **Browser extension (Chrome / Edge):** the same workspace behind a toolbar button, and `.md` files you open in a tab show in this style ([below](#browser-extension-chrome--edge)).
 - **For developers:** a command line tool that turns a folder of notes into a website (below).
 
 ![md-beauty light mode](docs/screenshot-light.png)
@@ -102,6 +103,18 @@ The sidebar shows the folder's files and subfolders, with a filter box. Links be
 
 The workspace renders markdown with [markdown-it](https://github.com/markdown-it/markdown-it) and cleans the HTML with [DOMPurify](https://github.com/cure53/DOMPurify), so a file's scripts never run, and reads `.md-beauty.yml` with [js-yaml](https://github.com/nodeca/js-yaml). It adds the same md-beauty extras on top. The three libraries ship with the theme (`theme/assets/vendor/`, each with its license header), so nothing loads from other sites.
 
+## Browser extension (Chrome / Edge)
+
+The extension carries the whole workspace, so it works offline and loads nothing from this site:
+
+- **Toolbar button:** opens the workspace in a tab (open folders and files, edit, save).
+- **`.md` files in tabs:** open a link to a `.md` file (for example a raw file on GitHub) and it shows in md-beauty style, with the table of contents, dark mode and **Edit**. Links to other `.md` files keep working. Back returns to the page you came from. Only plain text files are changed; a website's own HTML page is left alone.
+- **Files on your computer** (`file:///…/notes.md`): turn on **Allow access to file URLs** in the extension's details (the workspace page has a button for it).
+
+**Install it before it's in the stores:** download the code, then run `python extension/build.py` (it needs md-beauty: `pip install .`). In Chrome open `chrome://extensions`, or in Edge `edge://extensions`, turn on **Developer mode**, click **Load unpacked** and choose `extension/dist`. The build also writes `extension/md-beauty-extension-<version>.zip`, the file you upload to the Chrome Web Store and to Edge Add-ons. Each push to `main` builds the same zip as a download on the Actions run.
+
+What the browser asks you to allow: reading `.md` addresses (to show them in this style) and session storage (to keep the shown file while the tab is open). Nothing is sent anywhere.
+
 To add a workspace page to your own md-beauty site, create a page with this front matter. Its text shows under the buttons, and the build adds the app manifest and offline support:
 
 ```markdown
@@ -171,6 +184,7 @@ md-beauty generates a [MkDocs](https://www.mkdocs.org/) config on the fly and ru
 
 - `src/md_beauty/hooks.py`: markdown fixes, callouts, tags, sidebar names
 - `src/md_beauty/theme/`: the CSS (Open Sans, teal accent, light and dark), the reading controls, and the workspace (`md-beauty-workspace.js`, `sw.js` for offline use)
+- `extension/`: the browser extension. `build.py` builds the workspace page with md-beauty and moves its inline scripts into files, because extension pages only run script files; `src/view.js` hands `.md` tabs to the workspace
 
 Run the tests with `pip install -e ".[test]" && pytest`.
 

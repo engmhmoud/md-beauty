@@ -349,6 +349,7 @@
           if (index) target = index;
         }
         if (ws.pages[target]) a.setAttribute("href", route(target, parts[1]));
+        else if (ws.source) a.setAttribute("href", new URL(href, ws.source).href);
         else { a.classList.add("mb-ws-missing"); a.title = "Not in this folder: " + target; }
       }
     });
@@ -357,6 +358,7 @@
       var src = img.getAttribute("src");
       if (/^[a-z][a-z0-9+.-]*:/i.test(src) || src.indexOf("//") === 0) return;
       var entry = ws.images[resolve(dirname(path), decodeURI(src))];
+      if (!entry && ws.source) img.src = new URL(src, ws.source).href;
       if (!entry) return;
       images.push(getFile(entry).then(function (f) {
         var url = URL.createObjectURL(f);
@@ -599,6 +601,20 @@
       showError(new Error("drop .md files here. To open a folder in this browser, use “Open folder”."));
     }
   }
+
+  // a page handed over as text (the browser extension does this for .md files opened in a tab);
+  // its links and images point next to its own address
+  function openText(name, text, source) {
+    drafts = {};
+    return libs().then(function () {
+      return load(name, [{ path: name, file: new File([text], name, { type: "text/markdown" }) }], false);
+    }).then(function () {
+      ws.source = source || null;
+      opened(ws, null);
+    });
+  }
+
+  window.mdBeautyWorkspace = { openText: openText };
 
   function reopen() {
     var keep = ws && ws.current;
@@ -1086,7 +1102,7 @@
 
   // offline support: sw.js at the site root, told which files this page loaded
   function registerWorker(base) {
-    if (!("serviceWorker" in navigator) || !window.isSecureContext) return;
+    if (!("serviceWorker" in navigator) || !window.isSecureContext || !/^https?:$/.test(location.protocol)) return;
     navigator.serviceWorker.register(base + "/sw.js").then(function () {
       return Promise.all([navigator.serviceWorker.ready, libs()]);
     }).then(function (ready) {
