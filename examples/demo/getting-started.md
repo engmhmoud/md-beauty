@@ -7,8 +7,9 @@ This site is the live demo of [md-beauty](https://github.com/engmhmoud/md-beauty
 On the **[Workspace](README.md)** (this site's home page):
 
 - **Open folder** or **Open files**, or drop `.md` files or a folder anywhere on the page. Your markdown shows up in this style. Nothing is uploaded; your browser reads the files directly.
+- **Paste or type markdown** into the box on the home page, or press `Ctrl+V`. The text becomes a page in **My text**, next to any files you open. It's kept in this browser until you delete it or clear the site's data; **Save as…** makes it a real file.
 - **Edit** (or press `e`) shows the markdown on the left and a live preview on the right. **Hide preview** gives the text the full width. Save with `Ctrl+S`.
-- **+ New page** creates a new `.md` file.
+- **+ New page** creates a new `.md` file in the open folder. With no folder open, it makes a text page.
 
 | | Chrome / Edge | Firefox / Safari |
 |---|---|---|

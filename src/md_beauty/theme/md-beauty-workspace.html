@@ -54,14 +54,19 @@
   <div id="mb-ws" class="mb-ws" data-base="{{ base_url }}">
     <div class="mb-ws-start" id="mb-ws-start">
       <h1>{{ page.meta.heading or page.title }}</h1>
-      <p>Open a folder or files from your computer to read and edit your markdown in this style.
-         <strong>Nothing is uploaded</strong>: your browser reads the files directly.</p>
+      <p>Open a folder or files from your computer, or paste markdown text, to read and edit it in this style.
+         <strong>Nothing is uploaded</strong>: everything stays in your browser.</p>
       <div class="mb-empty-actions">
         <button type="button" class="mb-btn-primary" id="mb-ws-open">Open folder</button>
         <button type="button" class="mb-btn-secondary" id="mb-ws-open-files">Open files</button>
         <button type="button" class="mb-btn-text" id="mb-ws-install" hidden>Install as an app</button>
       </div>
       <p class="mb-hint">Or drop .md files or a folder anywhere on this page.</p>
+      <div class="mb-ws-paste">
+        <textarea class="mb-input" id="mb-ws-paste" rows="4" spellcheck="false" aria-label="Markdown text"
+                  placeholder="Or paste or type markdown here…"></textarea>
+        <button type="button" class="mb-btn-secondary" id="mb-ws-paste-go" title="Ctrl+Enter" disabled>Open as a page</button>
+      </div>
       <p class="mb-hint" id="mb-ws-support"></p>
       <div class="mb-ws-recent" id="mb-ws-recent"></div>
       <noscript><p>The workspace needs JavaScript.</p></noscript>
@@ -70,6 +75,7 @@
     <div class="mb-ws-page" id="mb-ws-page" hidden>
       <div class="mb-ws-pagebar">
         <div class="mb-eyebrow" id="mb-ws-eyebrow"></div>
+        <button type="button" class="mb-chip" id="mb-ws-remove" title="Delete this page from this browser" hidden>Delete</button>
         <button type="button" class="mb-chip mb-ws-edit" id="mb-ws-edit" title="Edit this page (e)">Edit</button>
       </div>
       <div id="mb-ws-article"></div>

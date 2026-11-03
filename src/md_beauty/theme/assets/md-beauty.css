@@ -454,6 +454,8 @@ body { background: var(--mb-paper); }
 .mb-ws-start { text-align: center; padding: 3em 1em; }
 .mb-ws-start h1 { margin-bottom: .4em; }
 .mb-ws-start .mb-btn-primary { font-size: .95em; padding: .7em 1.6em; }
+.mb-ws-paste { max-width: 36em; margin: 1em auto; text-align: right; }
+.mb-ws-paste textarea { display: block; resize: vertical; margin-bottom: .5em; font-family: var(--md-code-font-family), monospace; }
 .mb-ws-recent { display: flex; flex-wrap: wrap; gap: .4em; justify-content: center; align-items: center; margin-top: 1.5em; }
 .mb-ws-recent .mb-hint { width: 100%; margin: 0; }
 .mb-ws-folder { display: flex; flex-direction: column; gap: .15rem; padding: .2rem .5rem .6rem; }

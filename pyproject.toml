@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "md-beauty"
-version = "0.9.0"
+version = "0.10.0"
 description = "View one markdown file, several, or a whole folder as a clean, readable website."
 readme = "README.md"
 license = "MIT"

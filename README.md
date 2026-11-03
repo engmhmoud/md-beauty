@@ -80,7 +80,7 @@ With Docker, md-beauty only sees what you mount. Mount a parent folder to switch
 
 ## Workspace: read and edit files from your computer, in the browser
 
-The **[live demo's home page](https://engmhmoud.github.io/md-beauty/)** is the workspace. Click **Open folder** or **Open files**, or drop `.md` files or a folder anywhere on the page. There's nothing to install, and **nothing is uploaded**: your browser reads the files directly.
+The **[live demo's home page](https://engmhmoud.github.io/md-beauty/)** is the workspace. Click **Open folder** or **Open files**, drop `.md` files or a folder anywhere on the page, or paste or type markdown into the box. There's nothing to install, and **nothing is uploaded**: everything stays in your browser.
 
 | | Chrome / Edge | Firefox / Safari |
 |---|---|---|
@@ -94,12 +94,21 @@ The sidebar shows the folder's files and subfolders, with a filter box. Links be
 
 **Install as an app (Chrome / Edge).** Click **Install as an app** on the workspace, or the install icon in the address bar. md-beauty then opens in its own window, works offline, and appears in your computer's **Open with** menu for `.md` and `.markdown` files.
 
+**Text pages.** Paste or type into the box on the home page, or press `Ctrl+V` anywhere outside a text field, and the text becomes a page in a **My text** section of the sidebar. These pages:
+
+- are kept in this browser as you type, so a reload doesn't lose them (they go if you clear the site's data, and browsers limit this storage to a few MB, so use **Save as…** for anything you want to keep long term);
+- stay beside whatever you open: files, a folder, or nothing else;
+- become real files with **Save as…** (**Download** in Firefox and Safari, where the page also stays in the browser);
+- can be removed with **Delete**, and **Recent** on the home page brings them back.
+
+With a folder open, **+ Text** starts an empty text page and **+ New page** creates a file in the folder. With no folder open, **+ New page** makes a text page.
+
 **Editing.** Click **Edit** on a page (or press `e`) to see the markdown on the left and a live preview on the right. **Hide preview** gives the text the full width; **Show preview** brings it back. Save with the button or `Ctrl+S`; **Done** goes back to reading.
 
 - The first save asks the browser for permission to write to the folder (the folder is opened read-only until then).
 - Unsaved edits are kept when you switch pages, and a dot marks those pages in the sidebar. Closing the tab warns you.
 - Nothing is overwritten silently: if the file changed on disk after you started editing, Save asks whether to keep your version or load the one on disk.
-- **+ New page** creates a new `.md` file (use `/` for folders, for example `guide/caching`) and never replaces an existing file: it adds `-2`, `-3`, … instead. With single files open (no folder), Save asks where to put it.
+- **+ New page** creates a new `.md` file (use `/` for folders, for example `guide/caching`) and never replaces an existing file: it adds `-2`, `-3`, … instead.
 
 The workspace renders markdown with [markdown-it](https://github.com/markdown-it/markdown-it) and cleans the HTML with [DOMPurify](https://github.com/cure53/DOMPurify), so a file's scripts never run, and reads `.md-beauty.yml` with [js-yaml](https://github.com/nodeca/js-yaml). It adds the same md-beauty extras on top. The three libraries ship with the theme (`theme/assets/vendor/`, each with its license header), so nothing loads from other sites.
 

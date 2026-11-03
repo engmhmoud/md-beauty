@@ -14,6 +14,8 @@
   var IMG_RE = /\.(png|jpe?g|gif|svg|webp)$/i;
   var SKIP = { node_modules: 1, __pycache__: 1, venv: 1, "site-packages": 1 };
   var CONFIG = ".md-beauty.yml";
+  var TEXT_DIR = "My text";  // sidebar folder for pages typed or pasted here, kept in this browser
+  var TEXT_KEY = "md-beauty-ws-text:";
   var TAGS = /^\[(MUST|IMPORTANT|ARCHITECT|DEEP|SENIOR|OPTIONAL)\]$/;
   var ALERTS = { NOTE: "info", IMPORTANT: "info", TIP: "tip", WARNING: "warning", CAUTION: "warning" };
   var WARN_WORDS = ["warning", "trap", "gotcha", "caution", "careful", "danger", "pitfall", "don't", "do not",
@@ -34,6 +36,7 @@
   var previewUrls = [];
   var previewTimer = null;
   var installEvent = null;
+  var outside = {};     // path -> page: text pages saved outside the open folder (a folder re-read must not lose them)
 
   // ------------------------------------------------------------------ small helpers
 
@@ -143,7 +146,7 @@
 
   function getFile(entry) { return entry.handle ? entry.handle.getFile() : Promise.resolve(entry.file); }
 
-  function load(name, entries, live) {
+  function load(name, entries, live, withoutText) {
     var config = entries.filter(function (e) { return e.path === CONFIG; })[0];
     var optionsJob = config ? getFile(config).then(function (f) { return f.text(); }).then(function (t) {
       try { return window.jsyaml.load(t) || {}; } catch (e) { return {}; }
@@ -162,6 +165,7 @@
           });
         });
       })).then(function () {
+        if (!withoutText) addTextPages(pages);
         ws = { name: options.title || name, folder: name, live: live, pages: pages, images: images, options: options };
         ws.tree = buildTree();
         return ws;
@@ -278,10 +282,12 @@
     reload.addEventListener("click", function () { reopen(); });
     other.addEventListener("click", function () { pick(); });
     files.addEventListener("click", function () { pickFiles(); });
+    var text = el("button", { type: "button", class: "mb-chip mb-ws-add", title: "Write or paste markdown, kept in this browser", text: "+ Text" });
     add.addEventListener("click", newPageDialog);
+    text.addEventListener("click", function () { addText("# Untitled\n\n"); });
     bar.appendChild(el("strong", { text: ws.folder }));
-    bar.appendChild(el("span", { class: "mb-hint", text: count + (count === 1 ? " page" : " pages") + (ws.live ? " · live" : " · snapshot") }));
-    bar.appendChild(el("div", { class: "mb-ws-folder-actions" }, [add, ws.live || ws.handle ? reload : null, other, files]));
+    bar.appendChild(el("span", { class: "mb-hint", text: count + (count === 1 ? " page" : " pages") + (ws.scratch ? " · in this browser" : ws.live ? " · live" : " · snapshot") }));
+    bar.appendChild(el("div", { class: "mb-ws-folder-actions" }, [add, ws.handle ? text : null, ws.live || ws.handle ? reload : null, other, files]));
     $("mb-ws-search").hidden = false;
   }
 
@@ -413,6 +419,7 @@
     var scroll = window.scrollY;
     article.innerHTML = toHtml(page.text);
     $("mb-ws-page").hidden = false;
+    $("mb-ws-remove").hidden = !isText(page);
     return decorate(article, path).then(function () {
       showToc(article, path);
       markActive(path);
@@ -485,12 +492,14 @@
 
   // keepDrafts: the same folder read again (Reload, or files added or removed on disk)
   function openHandle(handle, keepDrafts) {
-    if (!keepDrafts) drafts = {};
+    if (!keepDrafts) { drafts = {}; outside = {}; }
     return libs().then(function () {
       return walkHandle(handle, "", []);
     }).then(function (entries) {
       return load(handle.name, entries, true);
     }).then(function () {
+      Object.keys(outside).forEach(function (p) { ws.pages[p] = ws.pages[p] || outside[p]; });
+      ws.tree = buildTree();
       opened(ws, handle);
       return rememberHandle(handle);
     });
@@ -607,7 +616,7 @@
   function openText(name, text, source) {
     drafts = {};
     return libs().then(function () {
-      return load(name, [{ path: name, file: new File([text], name, { type: "text/markdown" }) }], false);
+      return load(name, [{ path: name, file: new File([text], name, { type: "text/markdown" }) }], false, true);
     }).then(function () {
       ws.source = source || null;
       opened(ws, null);
@@ -643,10 +652,12 @@
       if (ticks % 5 === 0 && ws.handle) {  // every ~7.5 s: notice added or removed files
         walkHandle(ws.handle, "", []).then(function (entries) {
           var now = entries.filter(function (e) { return MD_RE.test(e.path); }).map(function (e) { return e.path; }).sort().join("|");
-          if (now !== Object.keys(ws.pages).sort().join("|")) reopen();
+          var shown = Object.keys(ws.pages).filter(function (p) { return !isText(ws.pages[p]) && !outside[p]; });
+          if (now !== shown.sort().join("|")) reopen();
         }).catch(function () { /* folder gone or permission dropped */ });
         return;
       }
+      if (isText(page)) return;
       getFile(page.entry).then(function (f) {
         if (drafts[page.path]) return followDraft(page, f);
         if (f.lastModified === page.modified) return;
@@ -705,7 +716,7 @@
 
   function showState(message) {
     var dirty = isDirty(editing);
-    $("mb-ws-editstate").textContent = dirty ? "Unsaved changes" : (message || "");
+    $("mb-ws-editstate").textContent = dirty ? "Unsaved changes" : (message || (isText(ws.pages[editing]) ? "Kept in this browser" : ""));
     var write = canWrite(ws.pages[editing]);
     var save = $("mb-ws-save");
     save.textContent = write ? "Save" : canSaveAs ? "Save as…" : "Download";
@@ -851,11 +862,20 @@
 
   // a new page with no file yet (opened files or a snapshot): the user picks where it goes
   function saveAs(path) {
+    var key = ws.pages[path].entry.textKey;
     return window.showSaveFilePicker({ suggestedName: basename(path), types: MD_TYPES }).then(function (handle) {
       ws.pages[path].entry = { path: path, handle: handle };
       if (ws.files) ws.files.push(handle);
-      return write(path);
-    }, function (err) {
+      return write(path).then(function (ok) {
+        if (key) {  // it's a file now: the browser's copy goes, and Recent finds the file
+          dropText(key);
+          $("mb-ws-remove").hidden = true;
+          rememberFiles([handle]);
+          if (ws.handle) outside[path] = ws.pages[path];
+        }
+        return ok;
+      });
+    }).catch(function (err) {
       if (err.name !== "AbortError") notice("Could not save: " + err.message);
       return false;
     });
@@ -943,21 +963,115 @@
           return { path: path, entry: { path: path, handle: handle }, modified: f.lastModified, base: text };
         });
       });
-    } else {  // snapshot: the page lives in this tab until it's downloaded
-      var path = rel, n = 1;
-      while (ws.pages[path]) { n += 1; path = rel.replace(/\.md$/, "-" + n + ".md"); }
-      made = Promise.resolve({ path: path, entry: { path: path, file: new File([text], basename(path)) }, modified: Date.now(), base: "" });
+    } else {  // no folder to write into: the page stays in this browser until it's saved as a file
+      return addText(text, rel);
     }
-    return made.then(function (p) {
-      ws.pages[p.path] = { path: p.path, entry: p.entry, text: p.base, modified: p.modified, title: firstHeading(text) || basename(p.path) };
-      drafts[p.path] = { text: text, base: p.base, baseModified: p.modified };
-      ws.tree = buildTree();
-      showFolderBar();
-      location.hash = route(p.path);  // hashchange opens it in the editor
-      showTree(p.path);
-      startPolling();
-      return p.path;
+    return made.then(function (p) { return addPage(p, text); });
+  }
+
+  function addPage(p, text) {
+    ws.pages[p.path] = { path: p.path, entry: p.entry, text: p.base, modified: p.modified, title: firstHeading(text) || basename(p.path).replace(MD_RE, "") };
+    drafts[p.path] = { text: text, base: p.base, baseModified: p.modified };
+    ws.tree = buildTree();
+    showFolderBar();
+    if (location.hash === route(p.path)) render(p.path);  // already there: no hashchange will come
+    else location.hash = route(p.path);  // hashchange opens it in the editor
+    showTree(p.path);
+    startPolling();
+    return p.path;
+  }
+
+  // ------------------------------------------------------------------ text pages (typed or pasted, kept in localStorage)
+
+  function isText(page) { return !!(page && page.entry.textKey); }
+
+  function textKeys() {
+    try {
+      return Object.keys(localStorage).filter(function (k) { return k.indexOf(TEXT_KEY) === 0; })
+        .map(function (k) { return k.slice(TEXT_KEY.length); });
+    } catch (e) { return []; }
+  }
+
+  function readText(key) {
+    try { return localStorage.getItem(TEXT_KEY + key); } catch (e) { return null; }
+  }
+
+  // false when the browser refuses (private mode, or full): the page then counts as unsaved
+  function keepText(key, text) {
+    try { localStorage.setItem(TEXT_KEY + key, text); return true; } catch (e) { return false; }
+  }
+
+  function dropText(key) {
+    try { localStorage.removeItem(TEXT_KEY + key); } catch (e) { /* private mode */ }
+  }
+
+  // a file on disk with the same path keeps its path; the text page moves aside, so neither hides the other
+  function addTextPages(pages) {
+    textKeys().forEach(function (key) {
+      var path = key, n = 1, text = readText(key);
+      while (pages[path]) { n += 1; path = key.replace(/\.md$/, "-" + n + ".md"); }
+      pages[path] = { path: path, entry: { path: path, textKey: key }, text: text, modified: 0,
+                      title: firstHeading(text) || basename(path).replace(MD_RE, "") };
     });
+  }
+
+  function freeTextKey(name) {
+    var taken = textKeys(), key = TEXT_DIR + "/" + name, n = 1;
+    while (taken.indexOf(key) >= 0 || (ws && ws.pages[key])) { n += 1; key = TEXT_DIR + "/" + name.replace(/\.md$/, "-" + n + ".md"); }
+    return key;
+  }
+
+  function openScratch() {
+    return libs().then(function () { return load(TEXT_DIR, [], false); }).then(function () {
+      ws.scratch = true;
+      opened(ws, null);
+    });
+  }
+
+  // a new page from text, beside whatever is open; rel is its name, or it comes from the first heading
+  function addText(text, rel) {
+    var key = freeTextKey(rel || (slugPart(firstHeading(text) || "").slice(0, 60) || "untitled") + ".md");
+    var kept = keepText(key, text);
+    return (ws ? Promise.resolve() : openScratch()).then(function () {
+      return addPage({ path: key, entry: { path: key, textKey: key }, modified: 0, base: kept ? text : "" }, text);
+    });
+  }
+
+  function submitPasteBox() {
+    var box = $("mb-ws-paste");
+    if (!box.value.trim()) return;
+    addText(box.value).then(function () { box.value = ""; $("mb-ws-paste-go").disabled = true; }).catch(showError);
+  }
+
+  function showHome() {
+    clearInterval(pollTimer);
+    ws = null;
+    $("mb-ws-folder").innerHTML = "";
+    $("mb-ws-tree").innerHTML = "";
+    $("mb-ws-search").hidden = true;
+    $("mb-ws-toc").innerHTML = "";
+    $("mb-ws-toc-title").hidden = true;
+    $("mb-ws-page").hidden = true;
+    $("mb-ws-start").hidden = false;
+    history.replaceState(null, "", location.pathname + location.search);
+    showRecent();
+  }
+
+  function removeText() {
+    var page = ws && ws.pages[ws.current];
+    if (!isText(page) || !window.confirm("Delete “" + plainTitle(page.title) + "” from this browser?")) return;
+    dropText(page.entry.textKey);
+    delete ws.pages[page.path];
+    delete drafts[page.path];
+    ws.current = null;
+    ws.tree = buildTree();
+    if (!Object.keys(ws.pages).length) {
+      if (ws.scratch) return showHome();
+      $("mb-ws-page").hidden = true;
+      return opened(ws, ws.handle);
+    }
+    history.replaceState(null, "", location.pathname + location.search);
+    opened(ws, ws.handle);
   }
 
   function newPageDialog() {
@@ -965,8 +1079,7 @@
     var folder = ws.current ? dirname(ws.current) : "";
     $("mb-ws-new-name").value = folder ? folder + "/" : "";
     $("mb-ws-new-error").textContent = "";
-    $("mb-ws-new-where").textContent = ws.handle ? "Saved into “" + ws.folder + "”"
-      : canSaveAs ? "You choose where to save it" : "Downloaded when you save";
+    $("mb-ws-new-where").textContent = ws.handle ? "Saved into “" + ws.folder + "”" : "Kept in this browser until you save it as a file";
     dialog.showModal();
     $("mb-ws-new-name").focus();
   }
@@ -1029,9 +1142,15 @@
   function showRecent() {
     var box = $("mb-ws-recent");
     recentHandles().then(function (items) {
+      var kept = textKeys().length;
       box.innerHTML = "";
-      if (!items.length) return;
+      if (!items.length && !kept) return;
       box.appendChild(el("p", { class: "mb-hint", text: "Recent:" }));
+      if (kept) {
+        var mine = el("button", { type: "button", class: "mb-chip", text: "📝 " + TEXT_DIR + " (" + kept + ")" });
+        mine.addEventListener("click", function () { openScratch().catch(showError); });
+        box.appendChild(mine);
+      }
       items.forEach(function (item) {
         var handles = item.handles || [item.handle];
         var b = el("button", { type: "button", class: "mb-chip", text: (item.handles ? "📄 " + item.label : "📁 " + item.name) });
@@ -1061,6 +1180,19 @@
       : "Your browser reads what you open once (a snapshot), and edits are downloaded as .md files. To save into your files, use Chrome or Edge.";
     $("mb-ws-open").addEventListener("click", pick);
     $("mb-ws-open-files").addEventListener("click", pickFiles);
+    $("mb-ws-paste-go").addEventListener("click", submitPasteBox);
+    $("mb-ws-paste").addEventListener("input", function () { $("mb-ws-paste-go").disabled = !this.value.trim(); });
+    $("mb-ws-paste").addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submitPasteBox(); }
+    });
+    $("mb-ws-paste").addEventListener("paste", function (e) {  // pasting into the empty box opens it right away
+      var pasted = e.clipboardData && e.clipboardData.getData("text/plain");
+      if (this.value || !pasted || !pasted.trim()) return;
+      e.preventDefault();
+      this.value = pasted;
+      submitPasteBox();
+    });
+    $("mb-ws-remove").addEventListener("click", removeText);
     $("mb-ws-install").hidden = !installEvent;
     $("mb-ws-install").addEventListener("click", function () {
       if (!installEvent) return;
@@ -1079,7 +1211,9 @@
     $("mb-ws-done").addEventListener("click", finishEdit);
     $("mb-ws-preview-toggle").addEventListener("click", function () { setPreview(!previewOn()); });
     $("mb-ws-source").addEventListener("input", function () {
+      var page = ws.pages[editing];
       drafts[editing].text = this.value;
+      if (isText(page) && keepText(page.entry.textKey, this.value)) adopt(editing, this.value);
       showState();
       clearTimeout(previewTimer);
       previewTimer = setTimeout(updatePreview, 150);
@@ -1098,6 +1232,7 @@
     });
     showRecent();
     libs().catch(showError);  // start loading the renderer early
+    if ((parseHash()[0] || "").indexOf(TEXT_DIR + "/") === 0) openScratch().catch(showError);  // reloaded on a text page
   }
 
   // offline support: sw.js at the site root, told which files this page loaded
@@ -1147,6 +1282,15 @@
       e.preventDefault();
       startEdit();
     }
+  });
+
+  // Ctrl+V outside a text field: the clipboard text becomes a page
+  document.addEventListener("paste", function (e) {
+    if (!document.getElementById("mb-ws") || editing || window.mdBeauty.typing(e.target) || document.querySelector("dialog[open]")) return;
+    var pasted = e.clipboardData && e.clipboardData.getData("text/plain");
+    if (!pasted || !pasted.trim()) return;
+    e.preventDefault();
+    addText(pasted).catch(showError);
   });
 
   window.addEventListener("beforeunload", function (e) {
